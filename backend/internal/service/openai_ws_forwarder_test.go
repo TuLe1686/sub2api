@@ -59,6 +59,31 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 	}
 }
 
+func TestOpenAIWSFirstProgressClassification(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    bool
+	}{
+		{name: "created", payload: `{"type":"response.created"}`, want: false},
+		{name: "in progress", payload: `{"type":"response.in_progress"}`, want: false},
+		{name: "empty reasoning item added", payload: `{"type":"response.output_item.added","item":{"id":"item_reasoning","type":"reasoning","summary":[]}}`, want: true},
+		{name: "empty reasoning item done", payload: `{"type":"response.output_item.done","item":{"id":"item_reasoning","type":"reasoning","summary":[]}}`, want: false},
+		{name: "empty message item added", payload: `{"type":"response.output_item.added","item":{"id":"item_message","type":"message","content":[]}}`, want: false},
+		{name: "empty delta", payload: `{"type":"response.output_text.delta","delta":""}`, want: false},
+		{name: "text delta", payload: `{"type":"response.output_text.delta","delta":"hello"}`, want: true},
+		{name: "partial image", payload: `{"type":"response.image_generation_call.partial_image","partial_image_b64":"dGVzdA=="}`, want: true},
+		{name: "completed", payload: `{"type":"response.completed","response":{"id":"resp_test"}}`, want: false},
+		{name: "completed with text", payload: `{"type":"response.completed","response":{"id":"resp_test","output":[{"type":"message","content":[{"type":"output_text","text":"hello"}]}]}}`, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIWSMessageStartsFirstProgress([]byte(tt.payload)))
+		})
+	}
+}
+
 // TestOpenAIWSCyberPolicyMark_ResponseFailed 验证 WS 路径 response.failed cyber_policy 标记逻辑。
 //
 // 全量转发循环（forwardOpenAIWSV2 / sendAndRelay）依赖真实 WebSocket 连接，
