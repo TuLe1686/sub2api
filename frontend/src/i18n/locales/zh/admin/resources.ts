@@ -4,6 +4,10 @@ export default {
       addPlan: '添加计划',
       editPlan: '编辑计划',
       deletePlan: '删除计划',
+      restoreOwnershipTitle: '恢复账户并释放所有权',
+      restoreAndDisable: '恢复并禁用',
+      confirmRestoreOwnership: '禁用此计划会恢复其持有的非活跃账户，并释放计划所有权。是否继续？',
+      confirmDeleteWithOwnership: '删除此计划会恢复其持有的非活跃账户，并释放计划所有权。此操作不可撤销，是否继续？',
       model: '模型',
       cronExpression: 'Cron 表达式',
       enabled: '启用',
@@ -37,7 +41,55 @@ export default {
       maxResultsTooltipExample: '例如填写 100，表示最多保存最近 100 次测试结果；第 101 次结果写入后，最早的一条会被清理。',
       maxResultsTooltipRange: '推荐填写范围：一般可填 20 到 200。只关注近期可用性时可填 20-50；需要回看较长时间的波动趋势时可填 100-200。',
       autoRecover: '自动恢复',
-      autoRecoverHelp: '测试成功后自动恢复异常状态的账号'
+      autoRecoverHelp: '测试成功后自动恢复异常状态的账号',
+      refresh: '刷新',
+      timeoutProtectionMode: '超时保护模式',
+      timeoutProtectionModes: {
+        off: '关闭',
+        shadow: '影子模式',
+        enforce: '强制执行'
+      },
+      timeoutSeconds: '超时秒数',
+      consecutiveTimeoutThreshold: '连续超时阈值',
+      retryDelaysSeconds: '重试延迟（秒）',
+      retryDelaysHelp: '使用逗号分隔，最多 5 个 0-300 的整数',
+      invalidRetryDelays: '重试延迟最多填写 5 个 0 到 300 的整数。',
+      invalidTimeoutProtectionNumbers: '超时秒数必须是 0 到 600 的整数，连续超时阈值必须是 0 到 100 的整数。',
+      effectiveTimeoutProtectionMode: '实际生效模式',
+      timeoutProtectionOverrideReason: '覆盖原因',
+      timeoutProtectionOverrideReasons: {
+        force_shadow: '强制影子模式',
+        kill_switch: '全局熔断开关'
+      },
+      consecutiveTimeoutCount: '连续超时次数',
+      runMode: '运行模式',
+      runModes: {
+        normal: '常规测试',
+        recovery: '恢复探测'
+      },
+      classification: '分类',
+      classifications: {
+        success: '成功',
+        timeout: '超时',
+        failure: '非超时失败'
+      },
+      protectionAction: '保护动作',
+      protectionActions: {
+        none: '无',
+        would_inactivate: '影子停用',
+        inactivated: '已自动停用',
+        recovered: '已自动恢复',
+        blocked: '已阻断'
+      },
+      blockedReason: '阻断原因',
+      blockedReasons: {
+        kill_switch: '全局开关关闭',
+        platform_circuit_open: '平台超时熔断已开启',
+        disable_budget_exhausted: '自动停用预算已耗尽',
+        account_already_owned: '账号已由其他计划持有',
+        manual_override: '管理员已接管账号状态'
+      },
+      ownsInactiveAccount: '持有非活跃账号'
     },
 
     // Proxies Management

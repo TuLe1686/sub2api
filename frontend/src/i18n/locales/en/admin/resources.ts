@@ -4,6 +4,10 @@ export default {
       addPlan: 'Add Plan',
       editPlan: 'Edit Plan',
       deletePlan: 'Delete Plan',
+      restoreOwnershipTitle: 'Restore Account and Release Ownership',
+      restoreAndDisable: 'Restore and Disable',
+      confirmRestoreOwnership: 'Disabling this plan will restore its inactive account and release plan ownership. Continue?',
+      confirmDeleteWithOwnership: 'Deleting this plan will restore its inactive account and release plan ownership. This cannot be undone. Continue?',
       model: 'Model',
       cronExpression: 'Cron Expression',
       enabled: 'Enabled',
@@ -37,7 +41,55 @@ export default {
       maxResultsTooltipExample: 'For example, 100 means keeping at most the latest 100 test results. When the 101st result is saved, the oldest one is removed.',
       maxResultsTooltipRange: 'Recommended range: usually 20 to 200. Use 20-50 when you only care about recent health status, or 100-200 if you want a longer trend history.',
       autoRecover: 'Auto Recover',
-      autoRecoverHelp: 'Automatically recover account from error/rate-limited state on successful test'
+      autoRecoverHelp: 'Automatically recover account from error/rate-limited state on successful test',
+      refresh: 'Refresh',
+      timeoutProtectionMode: 'Timeout Protection Mode',
+      timeoutProtectionModes: {
+        off: 'Off',
+        shadow: 'Shadow',
+        enforce: 'Enforce'
+      },
+      timeoutSeconds: 'Timeout Seconds',
+      consecutiveTimeoutThreshold: 'Consecutive Timeout Threshold',
+      retryDelaysSeconds: 'Retry Delays (seconds)',
+      retryDelaysHelp: 'Comma-separated, up to 5 integers from 0 to 300',
+      invalidRetryDelays: 'Retry delays must be up to 5 integers from 0 to 300.',
+      invalidTimeoutProtectionNumbers: 'Timeout seconds must be an integer from 0 to 600, and the consecutive timeout threshold must be an integer from 0 to 100.',
+      effectiveTimeoutProtectionMode: 'Effective Mode',
+      timeoutProtectionOverrideReason: 'Override Reason',
+      timeoutProtectionOverrideReasons: {
+        force_shadow: 'Forced Shadow Mode',
+        kill_switch: 'Global Kill Switch'
+      },
+      consecutiveTimeoutCount: 'Consecutive Timeouts',
+      runMode: 'Run Mode',
+      runModes: {
+        normal: 'Normal Test',
+        recovery: 'Recovery Probe'
+      },
+      classification: 'Classification',
+      classifications: {
+        success: 'Success',
+        timeout: 'Timeout',
+        failure: 'Non-timeout Failure'
+      },
+      protectionAction: 'Protection Action',
+      protectionActions: {
+        none: 'None',
+        would_inactivate: 'Would Inactivate',
+        inactivated: 'Automatically Inactivated',
+        recovered: 'Automatically Recovered',
+        blocked: 'Blocked'
+      },
+      blockedReason: 'Blocked Reason',
+      blockedReasons: {
+        kill_switch: 'Global Switch Disabled',
+        platform_circuit_open: 'Platform Timeout Circuit Open',
+        disable_budget_exhausted: 'Automatic Inactivation Budget Exhausted',
+        account_already_owned: 'Account Owned by Another Plan',
+        manual_override: 'Administrator Took Control'
+      },
+      ownsInactiveAccount: 'Owns Inactive Account'
     },
 
     // Proxies
