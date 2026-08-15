@@ -868,6 +868,21 @@ func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
 	return false
 }
 
+func openAIStreamDataStartsFirstProgress(data, eventType string) bool {
+	if openAIStreamDataStartsVisibleOutput(data, eventType) {
+		return true
+	}
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" || !gjson.Valid(trimmed) {
+		return false
+	}
+	if strings.TrimSpace(eventType) == "" {
+		eventType = gjson.Get(trimmed, "type").String()
+	}
+	return strings.TrimSpace(eventType) == "response.output_item.added" &&
+		strings.TrimSpace(gjson.Get(trimmed, "item.type").String()) == "reasoning"
+}
+
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
 // 兼容 response.failed 的嵌套形态与裸 error 形态。
 func openAIStreamFailedEventErrorCode(payload []byte) string {
@@ -1378,7 +1393,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				openAIResponsesCompletedEventIsEmpty(dataBytes, usage) {
 				return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
 			}
-			if firstTokenMs == nil && openAIStreamDataStartsVisibleOutput(trimmedData, eventType) {
+			if firstTokenMs == nil && openAIStreamDataStartsFirstProgress(trimmedData, eventType) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}

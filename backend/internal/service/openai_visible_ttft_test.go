@@ -41,6 +41,31 @@ func TestOpenAIVisibleOutputClassification(t *testing.T) {
 	}
 }
 
+func TestOpenAIFirstProgressClassification(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      string
+		eventType string
+		want      bool
+	}{
+		{name: "created", data: `{"type":"response.created"}`, want: false},
+		{name: "in progress", data: `{"type":"response.in_progress"}`, want: false},
+		{name: "empty reasoning item added", data: `{"type":"response.output_item.added","item":{"id":"item_reasoning","type":"reasoning","summary":[]}}`, want: true},
+		{name: "empty reasoning item done", data: `{"type":"response.output_item.done","item":{"id":"item_reasoning","type":"reasoning","summary":[]}}`, want: false},
+		{name: "empty message item added", data: `{"type":"response.output_item.added","item":{"id":"item_message","type":"message","content":[]}}`, want: false},
+		{name: "text delta", data: `{"type":"response.output_text.delta","delta":"test output"}`, want: true},
+		{name: "tool arguments", data: `{"type":"response.function_call_arguments.delta","delta":"{}"}`, want: true},
+		{name: "completed image item", data: `{"type":"response.output_item.done","item":{"id":"item_image","type":"image_generation_call","result":"dGVzdA=="}}`, want: true},
+		{name: "done marker", data: `[DONE]`, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIStreamDataStartsFirstProgress(tt.data, tt.eventType))
+		})
+	}
+}
+
 func TestOpenAIResponsesTTFTStartsAtVisibleOutput(t *testing.T) {
 	for _, passthrough := range []bool{false, true} {
 		name := "native"
@@ -48,8 +73,23 @@ func TestOpenAIResponsesTTFTStartsAtVisibleOutput(t *testing.T) {
 			name = "passthrough"
 		}
 		t.Run(name, func(t *testing.T) {
-			result := runSyntheticVisibleTTFTStream(t, passthrough, 120*time.Millisecond, 0,
+			result := runSyntheticTTFTStream(t, passthrough, nil, 120*time.Millisecond, 0,
 				`{"type":"response.output_text.delta","delta":"test output"}`)
+			require.NotNil(t, result.firstTokenMs)
+			require.GreaterOrEqual(t, *result.firstTokenMs, 100)
+		})
+	}
+}
+
+func TestOpenAIResponsesTTFTStartsAtEmptyReasoningItemAdded(t *testing.T) {
+	for _, passthrough := range []bool{false, true} {
+		name := "native"
+		if passthrough {
+			name = "passthrough"
+		}
+		t.Run(name, func(t *testing.T) {
+			result := runSyntheticTTFTStream(t, passthrough, nil, 120*time.Millisecond, 0,
+				`{"type":"response.output_item.added","item":{"id":"item_reasoning","type":"reasoning","summary":[]}}`)
 			require.NotNil(t, result.firstTokenMs)
 			require.GreaterOrEqual(t, *result.firstTokenMs, 100)
 		})
@@ -63,7 +103,7 @@ func TestOpenAIResponsesTTFTStartsAtCompletedImage(t *testing.T) {
 			name = "passthrough"
 		}
 		t.Run(name, func(t *testing.T) {
-			result := runSyntheticVisibleTTFTStream(t, passthrough, 120*time.Millisecond, 0,
+			result := runSyntheticTTFTStream(t, passthrough, nil, 120*time.Millisecond, 0,
 				`{"type":"response.output_item.done","item":{"id":"item_test","type":"image_generation_call","result":"dGVzdA=="}}`)
 			require.NotNil(t, result.firstTokenMs)
 			require.GreaterOrEqual(t, *result.firstTokenMs, 100)
@@ -71,14 +111,15 @@ func TestOpenAIResponsesTTFTStartsAtCompletedImage(t *testing.T) {
 	}
 }
 
-func TestOpenAINativeProgressDisarmsTimeoutWithoutStartingTTFT(t *testing.T) {
-	result := runSyntheticVisibleTTFTStream(t, false, 1200*time.Millisecond, 1,
+func TestOpenAINativeReasoningDisarmsTimeoutAndStartsTTFT(t *testing.T) {
+	reasoningEvent := `{"type":"response.output_item.added","item":{"id":"item_reasoning","type":"reasoning","summary":[]}}`
+	result := runSyntheticTTFTStream(t, false, []string{reasoningEvent}, 1200*time.Millisecond, 1,
 		`{"type":"response.output_text.delta","delta":"test output"}`)
 	require.NotNil(t, result.firstTokenMs)
-	require.GreaterOrEqual(t, *result.firstTokenMs, 1100)
+	require.Less(t, *result.firstTokenMs, 500)
 }
 
-func runSyntheticVisibleTTFTStream(t *testing.T, passthrough bool, visibleDelay time.Duration, timeoutSeconds int, visibleEvent string) *openaiStreamingResult {
+func runSyntheticTTFTStream(t *testing.T, passthrough bool, immediateEvents []string, delayedEventDelay time.Duration, timeoutSeconds int, delayedEvent string) *openaiStreamingResult {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
@@ -91,9 +132,11 @@ func runSyntheticVisibleTTFTStream(t *testing.T, passthrough bool, visibleDelay 
 		defer close(writerDone)
 		defer func() { _ = writer.Close() }()
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_test\"}}\n\n")
-		_, _ = io.WriteString(writer, "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"item_test\",\"type\":\"reasoning\",\"summary\":[]}}\n\n")
-		time.Sleep(visibleDelay)
-		_, _ = io.WriteString(writer, "data: "+visibleEvent+"\n\n")
+		for _, event := range immediateEvents {
+			_, _ = io.WriteString(writer, "data: "+event+"\n\n")
+		}
+		time.Sleep(delayedEventDelay)
+		_, _ = io.WriteString(writer, "data: "+delayedEvent+"\n\n")
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
 	}()
 
@@ -117,8 +160,11 @@ func runSyntheticVisibleTTFTStream(t *testing.T, passthrough bool, visibleDelay 
 	}
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, recorder.Body.String(), `"type":"response.output_item.added"`)
-	require.Contains(t, recorder.Body.String(), visibleEvent)
+	require.Contains(t, recorder.Body.String(), `"type":"response.created"`)
+	for _, event := range immediateEvents {
+		require.Contains(t, recorder.Body.String(), event)
+	}
+	require.Contains(t, recorder.Body.String(), delayedEvent)
 	select {
 	case <-writerDone:
 	case <-time.After(time.Second):
