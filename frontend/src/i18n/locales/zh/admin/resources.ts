@@ -108,7 +108,21 @@ export default {
       protectionHelpSafetyKillSwitch: '全局开关：关闭后所有计划的有效模式变为 off，不会停用任何账号。',
       protectionHelpSafetyCircuit: '平台熔断：当某平台超时比例异常时暂停该平台的自动停用。',
       protectionHelpSafetyBudget: '停用预算：每个时间窗口内最多停用的账号数量，防止批量误禁。',
-      protectionHelpSafetyManual: '管理员优先：管理员手动修改账号状态时，自动撤销 guard 所有权，防止旧任务覆盖人工决定。'
+      protectionHelpSafetyManual: '管理员优先：管理员手动修改账号状态时，自动撤销 guard 所有权，防止旧任务覆盖人工决定。',
+      modeTooltipTitle: '超时保护模式',
+      modeTooltipMeaning: '控制账号连续超时时的保护行为。',
+      modeTooltipOff: 'off（关闭）：不检测超时，不计数，不停用。',
+      modeTooltipShadow: 'shadow（影子）：检测超时并计数，但只记录"本应停用"，不实际改变账号状态。',
+      modeTooltipEnforce: 'enforce（强制执行）：检测超时并计数，达到阈值后实际停用账号。',
+      modeTooltipHint: '点击"功能说明"查看完整的模式对比、工作流程和安全机制。',
+      thresholdTooltipTitle: '连续超时阈值',
+      thresholdTooltipMeaning: '账号连续多少次测试全部超时后触发保护动作。',
+      thresholdTooltipExample: '例如填写 3：连续 3 次测试（含重试）全部超时后，shadow 记录或 enforce 停用账号。',
+      thresholdTooltipRange: '推荐范围 2-10。值越小越敏感（可能误禁偶发超时的账号），值越大越保守。0 表示关闭保护（即使模式为 enforce 也不停用）。',
+      retryDelaysTooltipTitle: '重试延迟（秒）',
+      retryDelaysTooltipMeaning: '单次测试超时后，等待多少秒再重试。多个值依次使用，全部超时才算一次连续超时。',
+      retryDelaysTooltipExample: '例如填写 10, 20：第 1 次超时后等 10 秒重试，第 2 次超时后等 20 秒重试，第 3 次仍超时则计入连续超时。',
+      retryDelaysTooltipRange: '推荐 2-5 个延迟值，每个 5-60 秒。空数组表示不重试（只测试一次）。'
     },
 
     // Proxies Management

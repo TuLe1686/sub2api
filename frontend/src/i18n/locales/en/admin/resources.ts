@@ -108,7 +108,21 @@ export default {
       protectionHelpSafetyKillSwitch: 'Global kill switch: when disabled, all plans effectively become off — no account is inactivated.',
       protectionHelpSafetyCircuit: 'Platform circuit breaker: pauses automatic inactivation for a platform when its timeout ratio is abnormally high.',
       protectionHelpSafetyBudget: 'Inactivation budget: limits the maximum number of accounts that can be auto-inactivated per time window, preventing mass false inactivation.',
-      protectionHelpSafetyManual: 'Admin priority: when an administrator manually changes account status, guard ownership is automatically revoked, preventing stale tasks from overriding manual decisions.'
+      protectionHelpSafetyManual: 'Admin priority: when an administrator manually changes account status, guard ownership is automatically revoked, preventing stale tasks from overriding manual decisions.',
+      modeTooltipTitle: 'Timeout Protection Mode',
+      modeTooltipMeaning: 'Controls the protection behavior when an account consistently times out.',
+      modeTooltipOff: 'off: No timeout detection, no counting, no inactivation.',
+      modeTooltipShadow: 'shadow: Detects timeouts and counts them, but only records "would inactivate" without changing account status.',
+      modeTooltipEnforce: 'enforce: Detects timeouts, counts them, and actually inactivates the account when the threshold is reached.',
+      modeTooltipHint: 'Click "Guide" for full mode comparison, workflow, and safety mechanisms.',
+      thresholdTooltipTitle: 'Consecutive Timeout Threshold',
+      thresholdTooltipMeaning: 'How many consecutive timed-out tests trigger the protection action.',
+      thresholdTooltipExample: 'e.g., enter 3: after 3 consecutive tests (including retries) all time out, shadow records or enforce inactivates the account.',
+      thresholdTooltipRange: 'Recommended range 2-10. Lower values are more sensitive (may falsely inactivate occasionally slow accounts), higher values are more conservative. 0 disables protection (even in enforce mode).',
+      retryDelaysTooltipTitle: 'Retry Delays (seconds)',
+      retryDelaysTooltipMeaning: 'After a single test timeout, how many seconds to wait before retrying. Multiple values are used in order; all timing out counts as one consecutive timeout.',
+      retryDelaysTooltipExample: 'e.g., enter 10, 20: after the 1st timeout wait 10s and retry, after the 2nd timeout wait 20s and retry, if the 3rd attempt still times out it counts as a consecutive timeout.',
+      retryDelaysTooltipRange: 'Recommended 2-5 delay values, each 5-60 seconds. Empty array means no retry (single test only).'
     },
 
     // Proxies

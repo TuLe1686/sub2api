@@ -129,6 +129,21 @@
           <div>
             <label class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.timeoutProtectionMode') }}
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.modeTooltipTitle') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipMeaning') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipOff') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipShadow') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipEnforce') }}</p>
+                  <p class="text-primary-600 dark:text-primary-400">{{ t('admin.scheduledTests.modeTooltipHint') }}</p>
+                </div>
+              </HelpTooltip>
               <button
                 type="button"
                 data-testid="new-protection-help-btn"
@@ -145,7 +160,7 @@
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.timeoutSeconds') }}
             </label>
             <Input
@@ -156,8 +171,21 @@
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.consecutiveTimeoutThreshold') }}
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.thresholdTooltipTitle') }}</p>
+                  <p>{{ t('admin.scheduledTests.thresholdTooltipMeaning') }}</p>
+                  <p>{{ t('admin.scheduledTests.thresholdTooltipExample') }}</p>
+                  <p>{{ t('admin.scheduledTests.thresholdTooltipRange') }}</p>
+                </div>
+              </HelpTooltip>
             </label>
             <Input
               v-model="newPlan.consecutive_timeout_threshold"
@@ -167,8 +195,21 @@
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.retryDelaysSeconds') }}
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.retryDelaysTooltipTitle') }}</p>
+                  <p>{{ t('admin.scheduledTests.retryDelaysTooltipMeaning') }}</p>
+                  <p>{{ t('admin.scheduledTests.retryDelaysTooltipExample') }}</p>
+                  <p>{{ t('admin.scheduledTests.retryDelaysTooltipRange') }}</p>
+                </div>
+              </HelpTooltip>
             </label>
             <Input
               v-model="newPlan.retry_delays_seconds"
@@ -430,6 +471,21 @@
               <div>
                 <label class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.timeoutProtectionMode') }}
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.modeTooltipTitle') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipMeaning') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipOff') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipShadow') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipEnforce') }}</p>
+                      <p class="text-primary-600 dark:text-primary-400">{{ t('admin.scheduledTests.modeTooltipHint') }}</p>
+                    </div>
+                  </HelpTooltip>
                   <button
                     type="button"
                     data-testid="edit-protection-help-btn"
@@ -446,7 +502,7 @@
                 />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.timeoutSeconds') }}
                 </label>
                 <Input
@@ -457,8 +513,21 @@
                 />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.consecutiveTimeoutThreshold') }}
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.thresholdTooltipTitle') }}</p>
+                      <p>{{ t('admin.scheduledTests.thresholdTooltipMeaning') }}</p>
+                      <p>{{ t('admin.scheduledTests.thresholdTooltipExample') }}</p>
+                      <p>{{ t('admin.scheduledTests.thresholdTooltipRange') }}</p>
+                    </div>
+                  </HelpTooltip>
                 </label>
                 <Input
                   v-model="editForm.consecutive_timeout_threshold"
@@ -468,8 +537,21 @@
                 />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.retryDelaysSeconds') }}
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.retryDelaysTooltipTitle') }}</p>
+                      <p>{{ t('admin.scheduledTests.retryDelaysTooltipMeaning') }}</p>
+                      <p>{{ t('admin.scheduledTests.retryDelaysTooltipExample') }}</p>
+                      <p>{{ t('admin.scheduledTests.retryDelaysTooltipRange') }}</p>
+                    </div>
+                  </HelpTooltip>
                 </label>
                 <Input
                   v-model="editForm.retry_delays_seconds"
