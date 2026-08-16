@@ -89,7 +89,26 @@ export default {
         account_already_owned: '账号已由其他计划持有',
         manual_override: '管理员已接管账号状态'
       },
-      ownsInactiveAccount: '持有非活跃账号'
+      ownsInactiveAccount: '持有非活跃账号',
+      protectionHelpTitle: '超时保护功能说明',
+      protectionHelpButton: '功能说明',
+      protectionHelpIntro: '超时保护用于在账号连续超时时自动停用账号，避免故障账号继续消耗资源。提供三种模式：',
+      protectionHelpOffTitle: '关闭（off）',
+      protectionHelpOffDesc: '不启用超时保护。仅执行单次测试，不追踪连续超时，不会自动停用账号。适合不需要超时保护的计划。',
+      protectionHelpShadowTitle: '影子模式（shadow）',
+      protectionHelpShadowDesc: '启用超时检测和连续计数，但达到阈值后只记录"本应停用"，不实际改变账号状态。用于上线前的灰度观察，确认配置是否合理。',
+      protectionHelpEnforceTitle: '强制执行（enforce）',
+      protectionHelpEnforceDesc: '启用完整的超时保护。达到阈值后实际停用账号（status→inactive），并获取账号所有权。只有后续恢复探测成功才会自动恢复账号为 active。',
+      protectionHelpFlowTitle: '工作流程',
+      protectionHelpFlowStep1: '1. 每次测试超时后，按配置的重试延迟自动重试（如 10 秒、20 秒后）。',
+      protectionHelpFlowStep2: '2. 所有重试均超时才增加连续超时计数；成功或非超时失败会清零计数。',
+      protectionHelpFlowStep3: '3. 连续超时达到阈值后：shadow 只记录，enforce 实际停用账号。',
+      protectionHelpFlowStep4: '4. enforce 模式下，被停用的账号仍按 cron 定时执行恢复探测。探测成功后自动恢复账号为 active。',
+      protectionHelpSafetyTitle: '安全机制',
+      protectionHelpSafetyKillSwitch: '全局开关：关闭后所有计划的有效模式变为 off，不会停用任何账号。',
+      protectionHelpSafetyCircuit: '平台熔断：当某平台超时比例异常时暂停该平台的自动停用。',
+      protectionHelpSafetyBudget: '停用预算：每个时间窗口内最多停用的账号数量，防止批量误禁。',
+      protectionHelpSafetyManual: '管理员优先：管理员手动修改账号状态时，自动撤销 guard 所有权，防止旧任务覆盖人工决定。'
     },
 
     // Proxies Management

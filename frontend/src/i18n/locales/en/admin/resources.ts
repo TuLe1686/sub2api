@@ -89,7 +89,26 @@ export default {
         account_already_owned: 'Account Owned by Another Plan',
         manual_override: 'Administrator Took Control'
       },
-      ownsInactiveAccount: 'Owns Inactive Account'
+      ownsInactiveAccount: 'Owns Inactive Account',
+      protectionHelpTitle: 'Timeout Protection Guide',
+      protectionHelpButton: 'Guide',
+      protectionHelpIntro: 'Timeout protection automatically inactivates accounts that consistently time out, preventing faulty accounts from wasting resources. Three modes are available:',
+      protectionHelpOffTitle: 'Off',
+      protectionHelpOffDesc: 'No timeout protection. Runs a single test attempt, does not track consecutive timeouts, and never inactivates accounts. Suitable for plans that do not need timeout protection.',
+      protectionHelpShadowTitle: 'Shadow',
+      protectionHelpShadowDesc: 'Enables timeout detection and consecutive counting, but only records "would inactivate" when the threshold is reached — without actually changing account status. Used for pre-launch observation to verify configuration.',
+      protectionHelpEnforceTitle: 'Enforce',
+      protectionHelpEnforceDesc: 'Full timeout protection. When the threshold is reached, the account is actually inactivated (status→inactive) and ownership is acquired. The account is only restored to active after a subsequent recovery probe succeeds.',
+      protectionHelpFlowTitle: 'Workflow',
+      protectionHelpFlowStep1: '1. After each test timeout, automatic retry follows the configured retry delays (e.g., after 10s, 20s).',
+      protectionHelpFlowStep2: '2. The consecutive timeout count only increases when all retries time out; a success or non-timeout failure resets the count to zero.',
+      protectionHelpFlowStep3: '3. When the threshold is reached: shadow only records, enforce actually inactivates the account.',
+      protectionHelpFlowStep4: '4. In enforce mode, inactivated accounts still run recovery probes on their cron schedule. A successful probe automatically restores the account to active.',
+      protectionHelpSafetyTitle: 'Safety Mechanisms',
+      protectionHelpSafetyKillSwitch: 'Global kill switch: when disabled, all plans effectively become off — no account is inactivated.',
+      protectionHelpSafetyCircuit: 'Platform circuit breaker: pauses automatic inactivation for a platform when its timeout ratio is abnormally high.',
+      protectionHelpSafetyBudget: 'Inactivation budget: limits the maximum number of accounts that can be auto-inactivated per time window, preventing mass false inactivation.',
+      protectionHelpSafetyManual: 'Admin priority: when an administrator manually changes account status, guard ownership is automatically revoked, preventing stale tasks from overriding manual decisions.'
     },
 
     // Proxies

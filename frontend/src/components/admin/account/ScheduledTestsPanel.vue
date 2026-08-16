@@ -127,8 +127,16 @@
             </div>
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.timeoutProtectionMode') }}
+              <button
+                type="button"
+                data-testid="new-protection-help-btn"
+                class="text-xs text-primary-600 underline hover:text-primary-700 dark:text-primary-400"
+                @click="showProtectionHelp = true"
+              >
+                {{ t('admin.scheduledTests.protectionHelpButton') }}
+              </button>
             </label>
             <Select
               v-model="newPlan.timeout_protection_mode"
@@ -420,8 +428,16 @@
                 </div>
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.timeoutProtectionMode') }}
+                  <button
+                    type="button"
+                    data-testid="edit-protection-help-btn"
+                    class="text-xs text-primary-600 underline hover:text-primary-700 dark:text-primary-400"
+                    @click="showProtectionHelp = true"
+                  >
+                    {{ t('admin.scheduledTests.protectionHelpButton') }}
+                  </button>
                 </label>
                 <Select
                   v-model="editForm.timeout_protection_mode"
@@ -636,6 +652,55 @@
       @confirm="handleDelete"
       @cancel="cancelDelete"
     />
+
+    <!-- Timeout Protection Help Dialog -->
+    <BaseDialog
+      :show="showProtectionHelp"
+      :title="t('admin.scheduledTests.protectionHelpTitle')"
+      width="wide"
+      @close="showProtectionHelp = false"
+    >
+      <div class="space-y-5 text-sm text-gray-700 dark:text-gray-300">
+        <p class="text-gray-600 dark:text-gray-400">
+          {{ t('admin.scheduledTests.protectionHelpIntro') }}
+        </p>
+
+        <div class="space-y-3">
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <p class="font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.scheduledTests.protectionHelpOffTitle') }}</p>
+            <p class="mt-1 text-gray-600 dark:text-gray-400">{{ t('admin.scheduledTests.protectionHelpOffDesc') }}</p>
+          </div>
+          <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+            <p class="font-semibold text-amber-800 dark:text-amber-400">{{ t('admin.scheduledTests.protectionHelpShadowTitle') }}</p>
+            <p class="mt-1 text-amber-700 dark:text-amber-300/80">{{ t('admin.scheduledTests.protectionHelpShadowDesc') }}</p>
+          </div>
+          <div class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+            <p class="font-semibold text-red-800 dark:text-red-400">{{ t('admin.scheduledTests.protectionHelpEnforceTitle') }}</p>
+            <p class="mt-1 text-red-700 dark:text-red-300/80">{{ t('admin.scheduledTests.protectionHelpEnforceDesc') }}</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="mb-1 font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.scheduledTests.protectionHelpFlowTitle') }}</p>
+          <ul class="space-y-1 pl-1 text-gray-600 dark:text-gray-400">
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep1') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep2') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep3') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep4') }}</li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="mb-1 font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.scheduledTests.protectionHelpSafetyTitle') }}</p>
+          <ul class="space-y-1 pl-1 text-gray-600 dark:text-gray-400">
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyKillSwitch') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyCircuit') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyBudget') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyManual') }}</li>
+          </ul>
+        </div>
+      </div>
+    </BaseDialog>
   </BaseDialog>
 </template>
 
@@ -696,6 +761,7 @@ const pendingOwnershipUpdate = ref<{
 } | null>(null)
 const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
+const showProtectionHelp = ref(false)
 const timeoutProtectionModeOptions = computed<SelectOption[]>(() => [
   { value: 'off', label: t('admin.scheduledTests.timeoutProtectionModes.off') },
   { value: 'shadow', label: t('admin.scheduledTests.timeoutProtectionModes.shadow') },
