@@ -198,7 +198,7 @@ function markDirty(id: number) {
 async function loadAccounts() {
   loading.value = true
   try {
-    const resp = await list()
+    const resp = await list(1, 500)
     // 只显示启用的账号（schedulable=true）
     const active = resp.items.filter((a) => a.schedulable)
 
