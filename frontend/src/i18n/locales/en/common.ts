@@ -176,6 +176,7 @@ export default {
     modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
+    accountsEnhanced: 'Accounts [Enhanced]',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',

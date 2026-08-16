@@ -1502,5 +1502,26 @@ export default {
       usageError: 'Fetch Error'
     },
 
+    // Accounts [Enhanced]
+    accountsEnhanced: {
+      title: 'Accounts [Enhanced]',
+      description: 'Configure cache rate override and TTFT control per enabled account',
+      activeCount: '{count} active account(s)',
+      noAccounts: 'No active accounts',
+      cacheRate: 'Cache Rate Setting',
+      ttftControl: 'TTFT Control',
+      reduceRange: 'Random reduce range',
+      fixedValueLabel: 'Fixed cache rate',
+      modes: {
+        off: 'Off',
+        randomReduce: 'Random Reduce',
+        fixedValue: 'Fixed Value',
+        ttftRandom: 'Random TTFT (500-3000ms)',
+        ttftProportional: 'Proportional TTFT (10% duration + random)'
+      },
+      ttftRandomHint: '500ms ~ 3000ms random',
+      ttftProportionalHint: 'total duration × 10% + random 300-1000ms'
+    },
+
     // Scheduled Tests
 }
