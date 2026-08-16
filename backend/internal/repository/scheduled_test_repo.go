@@ -561,11 +561,11 @@ func restoreScheduledTestOwnedAccount(ctx context.Context, tx *sql.Tx, planID, a
 		return false, err
 	}
 	result, err := tx.ExecContext(ctx, `
-		UPDATE accounts SET status = $3, schedulable = $4,
-			error_message = $5, updated_at = NOW()
-		WHERE id = $2 AND status = $6
-			AND schedulable = $7 AND error_message = $8
-	`, planID, accountID, service.StatusActive, schedulable, errorMessage,
+		UPDATE accounts SET status = $2, schedulable = $3,
+			error_message = $4, updated_at = NOW()
+		WHERE id = $1 AND status = $5
+			AND schedulable = $6 AND error_message = $7
+	`, accountID, service.StatusActive, schedulable, errorMessage,
 		service.ScheduledTestAccountStatusInactive, false, "scheduled test consecutive timeouts")
 	if err != nil {
 		return false, err

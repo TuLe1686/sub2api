@@ -176,7 +176,7 @@ func TestRestoreScheduledTestOwnedAccountPreservesNullErrorMessage(t *testing.T)
 		WillReturnRows(sqlmock.NewRows([]string{"previous_schedulable", "previous_error_message"}).AddRow(true, nil))
 	mock.ExpectExec("UPDATE accounts SET status").
 		WithArgs(
-			int64(19), int64(7), service.StatusActive, true, sql.NullString{},
+			int64(7), service.StatusActive, true, sql.NullString{},
 			service.ScheduledTestAccountStatusInactive, false, "scheduled test consecutive timeouts",
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -211,7 +211,7 @@ func TestRestoreScheduledTestOwnedAccountRejectsManualGuardStateChange(t *testin
 		WillReturnRows(sqlmock.NewRows([]string{"previous_schedulable", "previous_error_message"}).AddRow(true, "original"))
 	mock.ExpectExec("UPDATE accounts SET status").
 		WithArgs(
-			int64(19), int64(7), service.StatusActive, true, "original",
+			int64(7), service.StatusActive, true, "original",
 			service.ScheduledTestAccountStatusInactive, false, "scheduled test consecutive timeouts",
 		).
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -381,7 +381,7 @@ func TestDeleteScheduledTestPlanRollsBackWhenOwnedAccountCannotBeRestored(t *tes
 		WillReturnRows(sqlmock.NewRows([]string{"previous_schedulable", "previous_error_message"}).AddRow(true, "original"))
 	mock.ExpectExec("UPDATE accounts SET status").
 		WithArgs(
-			int64(19), int64(7), service.StatusActive, true, "original",
+			int64(7), service.StatusActive, true, "original",
 			service.ScheduledTestAccountStatusInactive, false, "scheduled test consecutive timeouts",
 		).
 		WillReturnResult(sqlmock.NewResult(0, 0))
