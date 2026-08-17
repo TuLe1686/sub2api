@@ -198,13 +198,11 @@ function markDirty(id: number) {
 async function loadAccounts() {
   loading.value = true
   try {
-    const resp = await list(1, 500)
-    // 只显示启用的账号（schedulable=true）
-    const active = resp.items.filter((a) => a.schedulable)
-
-    // 为每个账号加载增强配置
+    // 只显示启用的账号（status=active），用后端过滤而非前端 schedulable
+    // （schedulable 是计算字段，active 账号可能因临时不可调度而为 false）
+    const resp = await list(1, 500, { status: 'active' })
     accounts.value = await Promise.all(
-      active.map(async (acc) => {
+      resp.items.map(async (acc) => {
         let config = defaultConfig()
         try {
           const cfg = await getEnhancedControl(acc.id)
