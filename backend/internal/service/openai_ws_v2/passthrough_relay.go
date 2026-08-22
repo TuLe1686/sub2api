@@ -704,16 +704,17 @@ func observeUpstreamMessage(
 	}
 	now := nowFn()
 
-	if state.firstTokenMs == nil && isTokenEvent(eventType) {
+	startsFirstProgress := messageStartsFirstProgress(message, eventType)
+	if state.firstTokenMs == nil && startsFirstProgress {
 		ms := int(now.Sub(startAt).Milliseconds())
 		if ms >= 0 {
 			state.firstTokenMs = &ms
 		}
-		if state.activeTurn != nil && state.activeTurn.firstTokenMs == nil {
-			tms := int(now.Sub(state.activeTurn.startAt).Milliseconds())
-			if tms >= 0 {
-				state.activeTurn.firstTokenMs = &tms
-			}
+	}
+	if startsFirstProgress && state.activeTurn != nil && state.activeTurn.firstTokenMs == nil {
+		ms := int(now.Sub(state.activeTurn.startAt).Milliseconds())
+		if ms >= 0 {
+			state.activeTurn.firstTokenMs = &ms
 		}
 	}
 	parsedUsage := parseUsageAndAccumulate(state, message, eventType, onUsageParseFailure)
@@ -725,7 +726,7 @@ func observeUpstreamMessage(
 	var turnTiming *relayTurnTiming
 	if responseID != "" {
 		turnTiming = openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
-		if turnTiming != nil && turnTiming.firstTokenMs == nil && isTokenEvent(eventType) {
+		if turnTiming != nil && turnTiming.firstTokenMs == nil && startsFirstProgress {
 			ms := int(now.Sub(turnTiming.startAt).Milliseconds())
 			if ms >= 0 {
 				turnTiming.firstTokenMs = &ms
@@ -1079,6 +1080,68 @@ func isTokenEvent(eventType string) bool {
 	return strings.HasSuffix(eventType, ".delta") ||
 		eventType == "response.output_text.done" ||
 		eventType == "response.function_call_arguments.done"
+}
+
+func messageItemHasVisibleOutput(item gjson.Result) bool {
+	if item.Get("arguments").String() != "" || item.Get("input").String() != "" || item.Get("result").String() != "" {
+		return true
+	}
+	for _, path := range []string{"content", "summary"} {
+		for _, part := range item.Get(path).Array() {
+			if part.Get("text").String() != "" || part.Get("transcript").String() != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func messageStartsVisibleOutput(message []byte, eventType string) bool {
+	if len(message) == 0 || !gjson.ValidBytes(message) {
+		return false
+	}
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" {
+		eventType = strings.TrimSpace(gjson.GetBytes(message, "type").String())
+	}
+	if strings.HasSuffix(eventType, ".delta") {
+		delta := gjson.GetBytes(message, "delta")
+		return delta.Exists() && delta.String() != ""
+	}
+	switch eventType {
+	case "response.output_text.done",
+		"response.reasoning_summary_text.done",
+		"response.reasoning_text.done",
+		"response.audio_transcript.done":
+		return gjson.GetBytes(message, "text").String() != ""
+	case "response.function_call_arguments.done":
+		return gjson.GetBytes(message, "arguments").String() != ""
+	case "response.custom_tool_call_input.done":
+		return gjson.GetBytes(message, "input").String() != ""
+	case "response.image_generation_call.partial_image":
+		return gjson.GetBytes(message, "partial_image_b64").String() != ""
+	case "response.content_part.added", "response.content_part.done",
+		"response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
+		part := gjson.GetBytes(message, "part")
+		return part.Get("text").String() != "" || part.Get("transcript").String() != ""
+	case "response.output_item.added", "response.output_item.done":
+		return messageItemHasVisibleOutput(gjson.GetBytes(message, "item"))
+	case "response.completed", "response.done":
+		for _, item := range gjson.GetBytes(message, "response.output").Array() {
+			if messageItemHasVisibleOutput(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func messageStartsFirstProgress(message []byte, eventType string) bool {
+	if messageStartsVisibleOutput(message, eventType) {
+		return true
+	}
+	return strings.TrimSpace(eventType) == "response.output_item.added" &&
+		strings.TrimSpace(gjson.GetBytes(message, "item.type").String()) == "reasoning"
 }
 
 func minDuration(a, b time.Duration) time.Duration {
