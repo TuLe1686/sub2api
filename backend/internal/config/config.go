@@ -66,44 +66,45 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
 type Config struct {
-	Server                  ServerConfig                  `mapstructure:"server"`
-	Log                     LogConfig                     `mapstructure:"log"`
-	CORS                    CORSConfig                    `mapstructure:"cors"`
-	Security                SecurityConfig                `mapstructure:"security"`
-	Billing                 BillingConfig                 `mapstructure:"billing"`
-	Turnstile               TurnstileConfig               `mapstructure:"turnstile"`
-	Database                DatabaseConfig                `mapstructure:"database"`
-	Redis                   RedisConfig                   `mapstructure:"redis"`
-	Ops                     OpsConfig                     `mapstructure:"ops"`
-	JWT                     JWTConfig                     `mapstructure:"jwt"`
-	Totp                    TotpConfig                    `mapstructure:"totp"`
-	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
-	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
-	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
-	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
-	DingTalk                DingTalkConnectConfig         `mapstructure:"dingtalk_connect"`
-	GitHubOAuth             EmailOAuthProviderConfig      `mapstructure:"github_oauth"`
-	GoogleOAuth             EmailOAuthProviderConfig      `mapstructure:"google_oauth"`
-	Default                 DefaultConfig                 `mapstructure:"default"`
-	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
-	Pricing                 PricingConfig                 `mapstructure:"pricing"`
-	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
-	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
-	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
-	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
-	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
-	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
-	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
-	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
-	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
-	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
-	Update                  UpdateConfig                  `mapstructure:"update"`
-	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
-	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
-	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
-	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Server                    ServerConfig                    `mapstructure:"server"`
+	Log                       LogConfig                       `mapstructure:"log"`
+	CORS                      CORSConfig                      `mapstructure:"cors"`
+	Security                  SecurityConfig                  `mapstructure:"security"`
+	Billing                   BillingConfig                   `mapstructure:"billing"`
+	Turnstile                 TurnstileConfig                 `mapstructure:"turnstile"`
+	Database                  DatabaseConfig                  `mapstructure:"database"`
+	Redis                     RedisConfig                     `mapstructure:"redis"`
+	Ops                       OpsConfig                       `mapstructure:"ops"`
+	JWT                       JWTConfig                       `mapstructure:"jwt"`
+	Totp                      TotpConfig                      `mapstructure:"totp"`
+	WebAuthn                  WebAuthnConfig                  `mapstructure:"webauthn"`
+	LinuxDo                   LinuxDoConnectConfig            `mapstructure:"linuxdo_connect"`
+	WeChat                    WeChatConnectConfig             `mapstructure:"wechat_connect"`
+	OIDC                      OIDCConnectConfig               `mapstructure:"oidc_connect"`
+	DingTalk                  DingTalkConnectConfig           `mapstructure:"dingtalk_connect"`
+	GitHubOAuth               EmailOAuthProviderConfig        `mapstructure:"github_oauth"`
+	GoogleOAuth               EmailOAuthProviderConfig        `mapstructure:"google_oauth"`
+	Default                   DefaultConfig                   `mapstructure:"default"`
+	RateLimit                 RateLimitConfig                 `mapstructure:"rate_limit"`
+	Pricing                   PricingConfig                   `mapstructure:"pricing"`
+	Gateway                   GatewayConfig                   `mapstructure:"gateway"`
+	APIKeyAuth                APIKeyAuthCacheConfig           `mapstructure:"api_key_auth_cache"`
+	SubscriptionCache         SubscriptionCacheConfig         `mapstructure:"subscription_cache"`
+	SubscriptionMaintenance   SubscriptionMaintenanceConfig   `mapstructure:"subscription_maintenance"`
+	Dashboard                 DashboardCacheConfig            `mapstructure:"dashboard_cache"`
+	DashboardAgg              DashboardAggregationConfig      `mapstructure:"dashboard_aggregation"`
+	UsageCleanup              UsageCleanupConfig              `mapstructure:"usage_cleanup"`
+	Concurrency               ConcurrencyConfig               `mapstructure:"concurrency"`
+	TokenRefresh              TokenRefreshConfig              `mapstructure:"token_refresh"`
+	RunMode                   string                          `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone                  string                          `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini                    GeminiConfig                    `mapstructure:"gemini"`
+	Update                    UpdateConfig                    `mapstructure:"update"`
+	Idempotency               IdempotencyConfig               `mapstructure:"idempotency"`
+	BatchImage                BatchImageConfig                `mapstructure:"batch_image"`
+	ImageStorage              ImageStorageConfig              `mapstructure:"image_storage"`
+	Plugins                   PluginConfig                    `mapstructure:"plugins"`
+	ScheduledTestTimeoutGuard ScheduledTestTimeoutGuardConfig `mapstructure:"scheduled_test_timeout_guard"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
@@ -176,6 +177,17 @@ type UpdateConfig struct {
 	// 支持 http/https/socks5/socks5h 协议
 	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
 	ProxyURL string `mapstructure:"proxy_url"`
+}
+
+type ScheduledTestTimeoutGuardConfig struct {
+	Enabled                bool    `mapstructure:"enabled"`
+	ForceShadow            bool    `mapstructure:"force_shadow"`
+	ClaimLeaseSeconds      int     `mapstructure:"claim_lease_seconds"`
+	MaxWorkers             int     `mapstructure:"max_workers"`
+	CircuitWindowSeconds   int     `mapstructure:"circuit_window_seconds"`
+	CircuitMinSamples      int     `mapstructure:"circuit_min_samples"`
+	CircuitTimeoutRatio    float64 `mapstructure:"circuit_timeout_ratio"`
+	DisableBudgetPerWindow int     `mapstructure:"disable_budget_per_window"`
 }
 
 type IdempotencyConfig struct {
@@ -1986,6 +1998,14 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("scheduled_test_timeout_guard.enabled", false)
+	viper.SetDefault("scheduled_test_timeout_guard.force_shadow", true)
+	viper.SetDefault("scheduled_test_timeout_guard.claim_lease_seconds", 300)
+	viper.SetDefault("scheduled_test_timeout_guard.max_workers", 10)
+	viper.SetDefault("scheduled_test_timeout_guard.circuit_window_seconds", 300)
+	viper.SetDefault("scheduled_test_timeout_guard.circuit_min_samples", 20)
+	viper.SetDefault("scheduled_test_timeout_guard.circuit_timeout_ratio", 0.8)
+	viper.SetDefault("scheduled_test_timeout_guard.disable_budget_per_window", 3)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -2641,6 +2661,34 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if c.ScheduledTestTimeoutGuard.ClaimLeaseSeconds == 0 {
+		c.ScheduledTestTimeoutGuard.ClaimLeaseSeconds = 300
+	}
+	if c.ScheduledTestTimeoutGuard.MaxWorkers == 0 {
+		c.ScheduledTestTimeoutGuard.MaxWorkers = 10
+	}
+	if c.ScheduledTestTimeoutGuard.CircuitWindowSeconds == 0 {
+		c.ScheduledTestTimeoutGuard.CircuitWindowSeconds = 300
+	}
+	if c.ScheduledTestTimeoutGuard.ClaimLeaseSeconds < 30 || c.ScheduledTestTimeoutGuard.ClaimLeaseSeconds > 3600 {
+		return fmt.Errorf("scheduled_test_timeout_guard.claim_lease_seconds must be between 30 and 3600")
+	}
+	if c.ScheduledTestTimeoutGuard.MaxWorkers < 1 || c.ScheduledTestTimeoutGuard.MaxWorkers > 100 {
+		return fmt.Errorf("scheduled_test_timeout_guard.max_workers must be between 1 and 100")
+	}
+	if c.ScheduledTestTimeoutGuard.CircuitWindowSeconds < 60 || c.ScheduledTestTimeoutGuard.CircuitWindowSeconds > 86400 {
+		return fmt.Errorf("scheduled_test_timeout_guard.circuit_window_seconds must be between 60 and 86400")
+	}
+	if c.ScheduledTestTimeoutGuard.CircuitMinSamples < 0 || c.ScheduledTestTimeoutGuard.CircuitMinSamples > 100000 {
+		return fmt.Errorf("scheduled_test_timeout_guard.circuit_min_samples must be between 0 and 100000")
+	}
+	if c.ScheduledTestTimeoutGuard.CircuitTimeoutRatio < 0 || c.ScheduledTestTimeoutGuard.CircuitTimeoutRatio > 1 {
+		return fmt.Errorf("scheduled_test_timeout_guard.circuit_timeout_ratio must be between 0 and 1")
+	}
+	if c.ScheduledTestTimeoutGuard.DisableBudgetPerWindow < 0 || c.ScheduledTestTimeoutGuard.DisableBudgetPerWindow > 10000 {
+		return fmt.Errorf("scheduled_test_timeout_guard.disable_budget_per_window must be between 0 and 10000")
+	}
+
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)
