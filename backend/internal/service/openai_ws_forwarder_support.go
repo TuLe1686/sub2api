@@ -386,6 +386,11 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	return false
 }
 
+func openAIWSMessageStartsFirstProgress(message []byte) bool {
+	eventType := strings.TrimSpace(gjson.GetBytes(message, "type").String())
+	return openAIStreamDataStartsFirstProgress(string(message), eventType)
+}
+
 func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {
 	if len(message) == 0 {
 		return message
