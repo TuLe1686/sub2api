@@ -1256,6 +1256,21 @@ func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
 	}
 }
 
+func openAIStreamDataStartsFirstProgress(data, eventType string) bool {
+	if openAIStreamDataStartsVisibleOutput(data, eventType) {
+		return true
+	}
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" || !gjson.Valid(trimmed) {
+		return false
+	}
+	if strings.TrimSpace(eventType) == "" {
+		eventType = gjson.Get(trimmed, "type").String()
+	}
+	return strings.TrimSpace(eventType) == "response.output_item.added" &&
+		strings.TrimSpace(gjson.Get(trimmed, "item.type").String()) == "reasoning"
+}
+
 func (s *OpenAIGatewayService) openAITTFTMode(ctx context.Context) string {
 	mode := OpenAITTFTModeSemantic
 	if s != nil && s.settingService != nil {
@@ -1272,7 +1287,8 @@ func openAIStreamDataStartsTTFT(data, eventType string, forceOutput bool, mode s
 	if mode == OpenAITTFTModeVisible {
 		return openAIStreamDataStartsVisibleOutput(data, eventType)
 	}
-	return forceOutput || openAIStreamDataStartsSemanticTTFT(data, eventType)
+	// 默认 semantic：收紧为「首个 reasoning/有效输出」，不把 keepalive、空 delta、空 message item 算作首字。
+	return openAIStreamDataStartsFirstProgress(data, eventType)
 }
 
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
