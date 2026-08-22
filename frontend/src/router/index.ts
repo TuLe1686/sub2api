@@ -525,6 +525,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/accounts-enhanced',
+    name: 'AdminAccountsEnhanced',
+    component: () => import('@/views/admin/AccountsEnhancedView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '账号管理【增强】',
+      titleKey: 'admin.accountsEnhanced.title',
+      descriptionKey: 'admin.accountsEnhanced.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),
