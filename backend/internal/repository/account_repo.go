@@ -785,6 +785,9 @@ func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	payload, err := json.Marshal(normalizeJSONMap(credentials))
 	if err != nil {
 		return err
@@ -1357,6 +1360,9 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 }
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusError).
@@ -1743,6 +1749,9 @@ func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, a
 }
 
 func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusActive).
@@ -2155,6 +2164,9 @@ func (r *accountRepository) ListModelAvailabilityCandidates(
 }
 
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	now := time.Now()
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
@@ -2175,6 +2187,9 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 // requests may finish concurrently, so an older response must not overwrite a
 // later reset boundary observed by another request or instance.
 func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	now := time.Now()
 	updated, err := r.client.Account.Update().
 		Where(
@@ -2207,6 +2222,9 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 // by a successful request. Matching both timestamps prevents a stale success
 // from erasing a later clear/re-arm generation with an equal or shorter reset.
 func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return false, nil
+	}
 	updated, err := r.client.Account.Update().
 		Where(
 			dbaccount.IDEQ(id),
@@ -2233,6 +2251,9 @@ func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int
 }
 
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	if scope == "" {
 		return nil
 	}
@@ -2286,6 +2307,9 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 }
 
 func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetOverloadUntil(until).
@@ -2301,6 +2325,9 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 }
 
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = $1,
@@ -2392,6 +2419,9 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 }
 
 func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		ClearRateLimitedAt().
@@ -2553,6 +2583,9 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if service.ScheduledTestObserveOnly(ctx) {
+		return nil
+	}
 	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
 	if len(updates) == 0 {
 		return nil

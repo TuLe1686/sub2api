@@ -62,6 +62,8 @@ const usageLogsUpstreamModelMismatchIndex = "idx_usage_logs_upstream_model_misma
 const usageLogsEffectiveModelIndexesMigration = "226_add_usage_log_effective_model_indexes_notx.sql"
 const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requested_model_created"
 const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
+const scheduledTestExecutionUniqueMigration = "230_scheduled_test_execution_unique_notx.sql"
+const scheduledTestExecutionUniqueIndex = "idx_scheduled_test_results_plan_execution_unique"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -305,6 +307,8 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 			}
 		}
 		return nil
+	case scheduledTestExecutionUniqueMigration:
+		return prepareScheduledTestExecutionUniqueMigration(ctx, db)
 	default:
 		return nil
 	}
@@ -324,6 +328,38 @@ func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migra
 	}
 
 	return dropInvalidIndexIfPresent(ctx, db, paymentOrdersOutTradeNoUniqueIndex)
+}
+
+func prepareScheduledTestExecutionUniqueMigration(ctx context.Context, db migrationConnection) error {
+	var exists, valid, unique, matches bool
+	if err := db.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) > 0,
+			COALESCE(BOOL_AND(i.indisvalid), false),
+			COALESCE(BOOL_AND(i.indisunique), false),
+			COALESCE(BOOL_AND(
+				tbl.relname = 'scheduled_test_results'
+				AND pg_get_indexdef(idx.oid) =
+					'CREATE UNIQUE INDEX idx_scheduled_test_results_plan_execution_unique ON public.scheduled_test_results USING btree (plan_id, execution_id)'
+			), false)
+		FROM pg_class idx
+		JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+		LEFT JOIN pg_index i ON i.indexrelid = idx.oid
+		LEFT JOIN pg_class tbl ON tbl.oid = i.indrelid
+		WHERE ns.nspname = 'public' AND idx.relname = $1
+	`, scheduledTestExecutionUniqueIndex).Scan(&exists, &valid, &unique, &matches); err != nil {
+		return fmt.Errorf("inspect index %s: %w", scheduledTestExecutionUniqueIndex, err)
+	}
+	if !exists {
+		return nil
+	}
+	if !valid {
+		return dropInvalidIndexIfPresent(ctx, db, scheduledTestExecutionUniqueIndex)
+	}
+	if !unique || !matches {
+		return fmt.Errorf("valid index %s has an unexpected definition; manual remediation is required", scheduledTestExecutionUniqueIndex)
+	}
+	return nil
 }
 
 func dropInvalidIndexIfPresent(ctx context.Context, db migrationConnection, indexName string) error {

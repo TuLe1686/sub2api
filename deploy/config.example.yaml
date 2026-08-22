@@ -774,6 +774,22 @@ usage_cleanup:
   task_timeout_seconds: 1800
 
 # =============================================================================
+# 定时测试连续超时保护（默认仅观察，不会自动停用账户）
+# Scheduled test consecutive-timeout guard (observe-only by default)
+# =============================================================================
+scheduled_test_timeout_guard:
+  # 全局 kill switch；只有 true 才允许 enforce 计划自动停用账户
+  enabled: false
+  # 即使计划选择 enforce，true 仍只记录 would_inactivate
+  force_shadow: true
+  claim_lease_seconds: 300
+  max_workers: 10
+  circuit_window_seconds: 300
+  circuit_min_samples: 20
+  circuit_timeout_ratio: 0.8
+  disable_budget_per_window: 3
+
+# =============================================================================
 # HTTP 写接口幂等配置
 # Idempotency Configuration
 # =============================================================================
