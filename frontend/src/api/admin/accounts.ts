@@ -257,6 +257,54 @@ export async function deleteAccount(id: number): Promise<{ message: string }> {
   return data
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// 账号增强控制（account-enhanced-control 补丁）
+// ──────────────────────────────────────────────────────────────────────────
+
+/** 缓存率改写模式 */
+export type CacheRateMode = 'off' | 'random' | 'fixed'
+
+/** 首字时长改写模式 */
+export type TTFTMode = 'off' | 'random' | 'proportional'
+
+/** 缓存率改写配置 */
+export interface CacheRateSetting {
+  mode: CacheRateMode
+  /** 方式1 随机减少区间下限（1~30） */
+  random_reduce_min?: number
+  /** 方式1 随机减少区间上限（1~30） */
+  random_reduce_max?: number
+  /** 方式2 固定值（0~95） */
+  fixed_value?: number
+}
+
+/** 首字时长改写配置 */
+export interface TTFTSetting {
+  mode: TTFTMode
+}
+
+/** 增强控制配置 */
+export interface EnhancedControl {
+  cache_rate: CacheRateSetting
+  ttft: TTFTSetting
+}
+
+/**
+ * 获取账号的增强控制配置
+ */
+export async function getEnhancedControl(id: number): Promise<EnhancedControl> {
+  const { data } = await apiClient.get<EnhancedControl>(`/admin/accounts/${id}/enhanced-control`)
+  return data
+}
+
+/**
+ * 更新账号的增强控制配置（整体替换 enhanced_control，key 级合并进 extra）
+ */
+export async function updateEnhancedControl(id: number, config: EnhancedControl): Promise<EnhancedControl> {
+  const { data } = await apiClient.put<EnhancedControl>(`/admin/accounts/${id}/enhanced-control`, config)
+  return data
+}
+
 /**
  * Toggle account status
  * @param id - Account ID
