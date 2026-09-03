@@ -11,13 +11,30 @@
         <p class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('admin.scheduledTests.title') }}
         </p>
-        <button
-          @click="showAddForm = !showAddForm"
-          class="btn btn-primary flex items-center gap-1.5 text-sm"
-        >
-          <Icon name="plus" size="sm" :stroke-width="2" />
-          {{ t('admin.scheduledTests.addPlan') }}
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            data-testid="refresh-scheduled-tests"
+            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+            :disabled="refreshing"
+            :title="t('admin.scheduledTests.refresh')"
+            :aria-label="t('admin.scheduledTests.refresh')"
+            @click="refreshPanel(true)"
+          >
+            <Icon
+              name="refresh"
+              size="sm"
+              :class="refreshing ? 'animate-spin' : ''"
+              :stroke-width="2"
+            />
+          </button>
+          <button
+            @click="showAddForm = !showAddForm"
+            class="btn btn-primary flex items-center gap-1.5 text-sm"
+          >
+            <Icon name="plus" size="sm" :stroke-width="2" />
+            {{ t('admin.scheduledTests.addPlan') }}
+          </button>
+        </div>
       </div>
 
       <!-- Add Plan Form -->
@@ -35,6 +52,7 @@
             </label>
             <Select
               v-model="newPlan.model_id"
+              data-testid="new-model-id"
               :options="modelOptions"
               :placeholder="t('admin.scheduledTests.model')"
               :searchable="modelOptions.length > 5"
@@ -62,6 +80,7 @@
             </label>
             <Input
               v-model="newPlan.cron_expression"
+              data-testid="new-cron-expression"
               :placeholder="'*/30 * * * *'"
               :hint="t('admin.scheduledTests.cronHelp')"
             />
@@ -106,6 +125,98 @@
                 {{ t('admin.scheduledTests.autoRecoverHelp') }}
               </p>
             </div>
+          </div>
+          <div>
+            <label class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.timeoutProtectionMode') }}
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.modeTooltipTitle') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipMeaning') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipOff') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipShadow') }}</p>
+                  <p>{{ t('admin.scheduledTests.modeTooltipEnforce') }}</p>
+                  <p class="text-primary-600 dark:text-primary-400">{{ t('admin.scheduledTests.modeTooltipHint') }}</p>
+                </div>
+              </HelpTooltip>
+              <button
+                type="button"
+                data-testid="new-protection-help-btn"
+                class="text-xs text-primary-600 underline hover:text-primary-700 dark:text-primary-400"
+                @click="showProtectionHelp = true"
+              >
+                {{ t('admin.scheduledTests.protectionHelpButton') }}
+              </button>
+            </label>
+            <Select
+              v-model="newPlan.timeout_protection_mode"
+              data-testid="new-timeout-protection-mode"
+              :options="timeoutProtectionModeOptions"
+            />
+          </div>
+          <div>
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.timeoutSeconds') }}
+            </label>
+            <Input
+              v-model="newPlan.timeout_seconds"
+              data-testid="new-timeout-seconds"
+              type="number"
+              placeholder="60"
+            />
+          </div>
+          <div>
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.consecutiveTimeoutThreshold') }}
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.thresholdTooltipTitle') }}</p>
+                  <p>{{ t('admin.scheduledTests.thresholdTooltipMeaning') }}</p>
+                  <p>{{ t('admin.scheduledTests.thresholdTooltipExample') }}</p>
+                  <p>{{ t('admin.scheduledTests.thresholdTooltipRange') }}</p>
+                </div>
+              </HelpTooltip>
+            </label>
+            <Input
+              v-model="newPlan.consecutive_timeout_threshold"
+              data-testid="new-consecutive-timeout-threshold"
+              type="number"
+              placeholder="3"
+            />
+          </div>
+          <div>
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.retryDelaysSeconds') }}
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.retryDelaysTooltipTitle') }}</p>
+                  <p>{{ t('admin.scheduledTests.retryDelaysTooltipMeaning') }}</p>
+                  <p>{{ t('admin.scheduledTests.retryDelaysTooltipExample') }}</p>
+                  <p>{{ t('admin.scheduledTests.retryDelaysTooltipRange') }}</p>
+                </div>
+              </HelpTooltip>
+            </label>
+            <Input
+              v-model="newPlan.retry_delays_seconds"
+              data-testid="new-retry-delays-seconds"
+              placeholder="10, 20"
+              :hint="t('admin.scheduledTests.retryDelaysHelp')"
+            />
           </div>
         </div>
         <div class="mt-3 flex justify-end gap-2">
@@ -169,6 +280,7 @@
               <!-- Enabled Toggle -->
               <div class="flex items-center gap-1.5" @click.stop>
                 <Toggle
+                  :key="`${plan.id}:${toggleRenderVersion}`"
                   :model-value="plan.enabled"
                   @update:model-value="(val: boolean) => handleToggleEnabled(plan, val)"
                 />
@@ -183,6 +295,44 @@
                 class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
               >
                 {{ t('admin.scheduledTests.autoRecover') }}
+              </span>
+
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.scheduledTests.timeoutProtectionMode') }}:
+                {{ t(`admin.scheduledTests.timeoutProtectionModes.${plan.timeout_protection_mode}`) }}
+              </span>
+
+              <template
+                v-if="plan.effective_timeout_protection_mode && plan.effective_timeout_protection_mode !== plan.timeout_protection_mode"
+              >
+                <span class="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  {{ t('admin.scheduledTests.effectiveTimeoutProtectionMode') }}:
+                  {{ t(`admin.scheduledTests.timeoutProtectionModes.${plan.effective_timeout_protection_mode}`) }}
+                </span>
+                <span
+                  v-if="plan.timeout_protection_override_reason"
+                  class="text-xs text-amber-700 dark:text-amber-400"
+                >
+                  {{ t('admin.scheduledTests.timeoutProtectionOverrideReason') }}:
+                  {{ formatTimeoutProtectionOverrideReason(plan.timeout_protection_override_reason) }}
+                </span>
+              </template>
+
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.scheduledTests.consecutiveTimeoutCount') }}:
+                {{ plan.consecutive_timeout_count }}
+              </span>
+
+              <span
+                :class="[
+                  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                  plan.owns_inactive_account
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                    : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+                ]"
+              >
+                {{ t('admin.scheduledTests.ownsInactiveAccount') }}:
+                {{ plan.owns_inactive_account ? t('common.yes') : t('common.no') }}
               </span>
             </div>
 
@@ -232,6 +382,7 @@
           <!-- Edit Form -->
           <div
             v-if="editingPlanId === plan.id"
+            data-testid="edit-plan-form"
             class="border-t border-blue-100 bg-blue-50/50 px-4 py-3 dark:border-blue-900 dark:bg-blue-900/10"
             @click.stop
           >
@@ -317,6 +468,98 @@
                   </p>
                 </div>
               </div>
+              <div>
+                <label class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.timeoutProtectionMode') }}
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.modeTooltipTitle') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipMeaning') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipOff') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipShadow') }}</p>
+                      <p>{{ t('admin.scheduledTests.modeTooltipEnforce') }}</p>
+                      <p class="text-primary-600 dark:text-primary-400">{{ t('admin.scheduledTests.modeTooltipHint') }}</p>
+                    </div>
+                  </HelpTooltip>
+                  <button
+                    type="button"
+                    data-testid="edit-protection-help-btn"
+                    class="text-xs text-primary-600 underline hover:text-primary-700 dark:text-primary-400"
+                    @click="showProtectionHelp = true"
+                  >
+                    {{ t('admin.scheduledTests.protectionHelpButton') }}
+                  </button>
+                </label>
+                <Select
+                  v-model="editForm.timeout_protection_mode"
+                  data-testid="edit-timeout-protection-mode"
+                  :options="timeoutProtectionModeOptions"
+                />
+              </div>
+              <div>
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.timeoutSeconds') }}
+                </label>
+                <Input
+                  v-model="editForm.timeout_seconds"
+                  data-testid="edit-timeout-seconds"
+                  type="number"
+                  placeholder="60"
+                />
+              </div>
+              <div>
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.consecutiveTimeoutThreshold') }}
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.thresholdTooltipTitle') }}</p>
+                      <p>{{ t('admin.scheduledTests.thresholdTooltipMeaning') }}</p>
+                      <p>{{ t('admin.scheduledTests.thresholdTooltipExample') }}</p>
+                      <p>{{ t('admin.scheduledTests.thresholdTooltipRange') }}</p>
+                    </div>
+                  </HelpTooltip>
+                </label>
+                <Input
+                  v-model="editForm.consecutive_timeout_threshold"
+                  data-testid="edit-consecutive-timeout-threshold"
+                  type="number"
+                  placeholder="3"
+                />
+              </div>
+              <div>
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.retryDelaysSeconds') }}
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.retryDelaysTooltipTitle') }}</p>
+                      <p>{{ t('admin.scheduledTests.retryDelaysTooltipMeaning') }}</p>
+                      <p>{{ t('admin.scheduledTests.retryDelaysTooltipExample') }}</p>
+                      <p>{{ t('admin.scheduledTests.retryDelaysTooltipRange') }}</p>
+                    </div>
+                  </HelpTooltip>
+                </label>
+                <Input
+                  v-model="editForm.retry_delays_seconds"
+                  data-testid="edit-retry-delays-seconds"
+                  placeholder="10, 20"
+                  :hint="t('admin.scheduledTests.retryDelaysHelp')"
+                />
+              </div>
             </div>
             <div class="mt-3 flex justify-end gap-2">
               <button
@@ -400,6 +643,25 @@
                   </span>
                 </div>
 
+                <dl class="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-2">
+                  <div v-if="result.run_mode">
+                    <dt class="inline font-medium">{{ t('admin.scheduledTests.runMode') }}:</dt>
+                    <dd class="inline"> {{ formatScheduledTestEnum('runModes', result.run_mode) }}</dd>
+                  </div>
+                  <div v-if="result.classification">
+                    <dt class="inline font-medium">{{ t('admin.scheduledTests.classification') }}:</dt>
+                    <dd class="inline"> {{ formatScheduledTestEnum('classifications', result.classification) }}</dd>
+                  </div>
+                  <div v-if="result.protection_action">
+                    <dt class="inline font-medium">{{ t('admin.scheduledTests.protectionAction') }}:</dt>
+                    <dd class="inline"> {{ formatScheduledTestEnum('protectionActions', result.protection_action) }}</dd>
+                  </div>
+                  <div v-if="result.blocked_reason">
+                    <dt class="inline font-medium">{{ t('admin.scheduledTests.blockedReason') }}:</dt>
+                    <dd class="inline break-all"> {{ formatScheduledTestEnum('blockedReasons', result.blocked_reason) }}</dd>
+                  </div>
+                </dl>
+
                 <!-- Response / Error (collapsible) -->
                 <div v-if="result.error_message" class="mt-2">
                   <div
@@ -448,22 +710,84 @@
       </div>
     </div>
 
+    <ConfirmDialog
+      data-testid="confirm-restore-ownership"
+      :show="pendingOwnershipUpdate !== null"
+      :title="t('admin.scheduledTests.restoreOwnershipTitle')"
+      :message="t('admin.scheduledTests.confirmRestoreOwnership')"
+      :confirm-text="t('admin.scheduledTests.restoreAndDisable')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmOwnershipUpdate"
+      @cancel="cancelOwnershipUpdate"
+    />
+
     <!-- Delete Confirmation -->
     <ConfirmDialog
+      data-testid="confirm-delete"
       :show="showDeleteConfirm"
       :title="t('admin.scheduledTests.deletePlan')"
-      :message="t('admin.scheduledTests.confirmDelete')"
+      :message="deleteConfirmationMessage"
       :confirm-text="t('common.delete')"
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="handleDelete"
-      @cancel="showDeleteConfirm = false"
+      @cancel="cancelDelete"
     />
+
+    <!-- Timeout Protection Help Dialog -->
+    <BaseDialog
+      :show="showProtectionHelp"
+      :title="t('admin.scheduledTests.protectionHelpTitle')"
+      width="wide"
+      @close="showProtectionHelp = false"
+    >
+      <div class="space-y-5 text-sm text-gray-700 dark:text-gray-300">
+        <p class="text-gray-600 dark:text-gray-400">
+          {{ t('admin.scheduledTests.protectionHelpIntro') }}
+        </p>
+
+        <div class="space-y-3">
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <p class="font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.scheduledTests.protectionHelpOffTitle') }}</p>
+            <p class="mt-1 text-gray-600 dark:text-gray-400">{{ t('admin.scheduledTests.protectionHelpOffDesc') }}</p>
+          </div>
+          <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+            <p class="font-semibold text-amber-800 dark:text-amber-400">{{ t('admin.scheduledTests.protectionHelpShadowTitle') }}</p>
+            <p class="mt-1 text-amber-700 dark:text-amber-300/80">{{ t('admin.scheduledTests.protectionHelpShadowDesc') }}</p>
+          </div>
+          <div class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+            <p class="font-semibold text-red-800 dark:text-red-400">{{ t('admin.scheduledTests.protectionHelpEnforceTitle') }}</p>
+            <p class="mt-1 text-red-700 dark:text-red-300/80">{{ t('admin.scheduledTests.protectionHelpEnforceDesc') }}</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="mb-1 font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.scheduledTests.protectionHelpFlowTitle') }}</p>
+          <ul class="space-y-1 pl-1 text-gray-600 dark:text-gray-400">
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep1') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep2') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep3') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpFlowStep4') }}</li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="mb-1 font-semibold text-gray-800 dark:text-gray-200">{{ t('admin.scheduledTests.protectionHelpSafetyTitle') }}</p>
+          <ul class="space-y-1 pl-1 text-gray-600 dark:text-gray-400">
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyKillSwitch') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyCircuit') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyBudget') }}</li>
+            <li>{{ t('admin.scheduledTests.protectionHelpSafetyManual') }}</li>
+          </ul>
+        </div>
+      </div>
+    </BaseDialog>
   </BaseDialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -475,7 +799,12 @@ import { Icon } from '@/components/icons'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
-import type { ScheduledTestPlan, ScheduledTestResult } from '@/types'
+import type {
+  ScheduledTestPlan,
+  ScheduledTestResult,
+  TimeoutProtectionMode,
+  UpdateScheduledTestPlanRequest
+} from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -492,23 +821,50 @@ const emit = defineEmits<{
 
 // State
 const loading = ref(false)
+const refreshing = ref(false)
 const creating = ref(false)
 const loadingResults = ref(false)
+let requestGeneration = 0
+let refreshInFlightGeneration: number | null = null
+let pollingTimer: ReturnType<typeof setInterval> | null = null
 const plans = ref<ScheduledTestPlan[]>([])
 const results = ref<ScheduledTestResult[]>([])
+const toggleRenderVersion = ref(0)
 const expandedPlanId = ref<number | null>(null)
 const expandedResultIds = reactive(new Set<number>())
 const showAddForm = ref(false)
 const showDeleteConfirm = ref(false)
 const deletingPlan = ref<ScheduledTestPlan | null>(null)
+const deleteRequiresOwnershipRestore = ref(false)
+const pendingOwnershipUpdate = ref<{
+  plan: ScheduledTestPlan
+  request: UpdateScheduledTestPlanRequest
+  closeEditOnSuccess: boolean
+} | null>(null)
 const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
+const showProtectionHelp = ref(false)
+const timeoutProtectionModeOptions = computed<SelectOption[]>(() => [
+  { value: 'off', label: t('admin.scheduledTests.timeoutProtectionModes.off') },
+  { value: 'shadow', label: t('admin.scheduledTests.timeoutProtectionModes.shadow') },
+  { value: 'enforce', label: t('admin.scheduledTests.timeoutProtectionModes.enforce') }
+])
+const deleteConfirmationMessage = computed(() =>
+  deleteRequiresOwnershipRestore.value
+    ? t('admin.scheduledTests.confirmDeleteWithOwnership')
+    : t('admin.scheduledTests.confirmDelete')
+)
+
 const editForm = reactive({
   model_id: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
-  auto_recover: false
+  auto_recover: false,
+  timeout_protection_mode: 'off' as TimeoutProtectionMode,
+  timeout_seconds: '60' as string,
+  consecutive_timeout_threshold: '3' as string,
+  retry_delays_seconds: '10, 20' as string
 })
 
 const newPlan = reactive({
@@ -516,7 +872,11 @@ const newPlan = reactive({
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
-  auto_recover: false
+  auto_recover: false,
+  timeout_protection_mode: 'off' as TimeoutProtectionMode,
+  timeout_seconds: '60' as string,
+  consecutive_timeout_threshold: '3' as string,
+  retry_delays_seconds: '10, 20' as string
 })
 
 const resetNewPlan = () => {
@@ -525,39 +885,201 @@ const resetNewPlan = () => {
   newPlan.max_results = '100'
   newPlan.enabled = true
   newPlan.auto_recover = false
+  newPlan.timeout_protection_mode = 'off'
+  newPlan.timeout_seconds = '60'
+  newPlan.consecutive_timeout_threshold = '3'
+  newPlan.retry_delays_seconds = '10, 20'
 }
 
-// Load plans when dialog opens
+const parseOptionalInteger = (
+  value: string,
+  min: number,
+  max: number
+): number | undefined | null => {
+  const trimmed = value.trim()
+  if (trimmed === '') return undefined
+
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null
+  return parsed
+}
+
+const parseTimeoutNumbersOrShowError = (
+  timeoutSecondsValue: string,
+  thresholdValue: string
+): { timeoutSeconds?: number; threshold?: number } | null => {
+  const timeoutSeconds = parseOptionalInteger(timeoutSecondsValue, 0, 600)
+  const threshold = parseOptionalInteger(thresholdValue, 0, 100)
+  if (timeoutSeconds === null || threshold === null) {
+    appStore.showError(t('admin.scheduledTests.invalidTimeoutProtectionNumbers'))
+    return null
+  }
+  return { timeoutSeconds, threshold }
+}
+
+const formatTimeoutProtectionOverrideReason = (reason: string): string => {
+  const knownReasons = ['force_shadow', 'kill_switch']
+  return knownReasons.includes(reason)
+    ? t(`admin.scheduledTests.timeoutProtectionOverrideReasons.${reason}`)
+    : reason
+}
+
+const scheduledTestEnumValues = {
+  runModes: ['normal', 'recovery'],
+  classifications: ['success', 'timeout', 'failure'],
+  protectionActions: ['none', 'would_inactivate', 'inactivated', 'recovered', 'blocked'],
+  blockedReasons: ['kill_switch', 'platform_circuit_open', 'disable_budget_exhausted', 'account_already_owned', 'manual_override']
+} as const
+
+const formatScheduledTestEnum = (
+  group: keyof typeof scheduledTestEnumValues,
+  value: string
+): string => {
+  return scheduledTestEnumValues[group].some((knownValue) => knownValue === value)
+    ? t(`admin.scheduledTests.${group}.${value}`)
+    : value
+}
+
+const parseRetryDelays = (value: string): number[] | null => {
+  if (value.trim() === '') return []
+
+  const parts = value.split(',').map((delay) => delay.trim())
+  if (parts.length > 5 || parts.some((delay) => delay === '')) return null
+
+  const delays = parts.map(Number)
+  if (delays.some((delay) => !Number.isInteger(delay) || delay < 0 || delay > 300)) {
+    return null
+  }
+  return delays
+}
+
+const parseRetryDelaysOrShowError = (value: string): number[] | null => {
+  const delays = parseRetryDelays(value)
+  if (delays === null) {
+    appStore.showError(t('admin.scheduledTests.invalidRetryDelays'))
+  }
+  return delays
+}
+
+const stopPolling = () => {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
+
+const startPolling = () => {
+  stopPolling()
+  pollingTimer = setInterval(() => {
+    void refreshPanel(false)
+  }, 15_000)
+}
+
+const resetPanelState = () => {
+  plans.value = []
+  results.value = []
+  expandedPlanId.value = null
+  expandedResultIds.clear()
+  showAddForm.value = false
+  showDeleteConfirm.value = false
+  deletingPlan.value = null
+  deleteRequiresOwnershipRestore.value = false
+  pendingOwnershipUpdate.value = null
+  editingPlanId.value = null
+}
+
+const requestIsCurrent = (generation: number, accountId: number) =>
+  requestGeneration === generation && props.show && props.accountId === accountId
+
+// Reload and invalidate pending responses when the dialog or account changes.
 watch(
-  () => props.show,
-  async (visible) => {
-    if (visible && props.accountId) {
-      await loadPlans()
-    } else {
-      plans.value = []
-      results.value = []
-      expandedPlanId.value = null
-      expandedResultIds.clear()
-      showAddForm.value = false
-      showDeleteConfirm.value = false
+  [() => props.show, () => props.accountId],
+  async ([visible, accountId]) => {
+    requestGeneration += 1
+    refreshInFlightGeneration = null
+    stopPolling()
+    resetPanelState()
+    if (visible && accountId) {
+      await refreshPanel(false, true)
+      if (props.show && props.accountId === accountId) startPolling()
     }
   }
 )
 
-const loadPlans = async () => {
-  if (!props.accountId) return
-  loading.value = true
+onBeforeUnmount(() => {
+  requestGeneration += 1
+  stopPolling()
+})
+
+const loadPlans = async (
+  showLoading = true,
+  generation = requestGeneration,
+  accountId = props.accountId
+) => {
+  if (!accountId) return
+  if (showLoading && requestIsCurrent(generation, accountId)) loading.value = true
   try {
-    plans.value = await adminAPI.scheduledTests.listByAccount(props.accountId)
+    const loadedPlans = await adminAPI.scheduledTests.listByAccount(accountId)
+    if (requestIsCurrent(generation, accountId)) plans.value = loadedPlans
   } catch (error: any) {
-    appStore.showError(error?.message || 'Failed to load plans')
+    if (requestIsCurrent(generation, accountId)) {
+      appStore.showError(error?.message || 'Failed to load plans')
+    }
   } finally {
-    loading.value = false
+    if (showLoading && requestIsCurrent(generation, accountId)) loading.value = false
+  }
+}
+
+const loadResults = async (
+  planId: number,
+  showLoading = true,
+  generation = requestGeneration,
+  accountId = props.accountId
+) => {
+  if (!accountId) return
+  if (showLoading && requestIsCurrent(generation, accountId)) loadingResults.value = true
+  try {
+    const loadedResults = await adminAPI.scheduledTests.listResults(planId, 20)
+    if (requestIsCurrent(generation, accountId) && expandedPlanId.value === planId) {
+      results.value = loadedResults
+    }
+  } catch (error: any) {
+    if (requestIsCurrent(generation, accountId) && expandedPlanId.value === planId) {
+      appStore.showError(error?.message || 'Failed to load results')
+      results.value = []
+    }
+  } finally {
+    if (showLoading && requestIsCurrent(generation, accountId)) loadingResults.value = false
+  }
+}
+
+const refreshPanel = async (manual = false, showLoading = false) => {
+  const accountId = props.accountId
+  const generation = requestGeneration
+  if (!props.show || !accountId || refreshInFlightGeneration === generation) return
+  refreshInFlightGeneration = generation
+  if (manual) refreshing.value = true
+  try {
+    await loadPlans(showLoading, generation, accountId)
+    const planId = expandedPlanId.value
+    if (planId && requestIsCurrent(generation, accountId)) {
+      await loadResults(planId, false, generation, accountId)
+    }
+  } finally {
+    if (refreshInFlightGeneration === generation) refreshInFlightGeneration = null
+    if (manual && requestIsCurrent(generation, accountId)) refreshing.value = false
   }
 }
 
 const handleCreate = async () => {
   if (!props.accountId || !newPlan.model_id || !newPlan.cron_expression) return
+  const retryDelays = parseRetryDelaysOrShowError(newPlan.retry_delays_seconds)
+  if (retryDelays === null) return
+  const timeoutNumbers = parseTimeoutNumbersOrShowError(
+    newPlan.timeout_seconds,
+    newPlan.consecutive_timeout_threshold
+  )
+  if (timeoutNumbers === null) return
   creating.value = true
   try {
     const maxResults = Number(newPlan.max_results) || 100
@@ -567,7 +1089,15 @@ const handleCreate = async () => {
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
-      auto_recover: newPlan.auto_recover
+      auto_recover: newPlan.auto_recover,
+      timeout_protection_mode: newPlan.timeout_protection_mode,
+      ...(timeoutNumbers.timeoutSeconds !== undefined && {
+        timeout_seconds: timeoutNumbers.timeoutSeconds
+      }),
+      ...(timeoutNumbers.threshold !== undefined && {
+        consecutive_timeout_threshold: timeoutNumbers.threshold
+      }),
+      retry_delays_seconds: retryDelays
     })
     appStore.showSuccess(t('admin.scheduledTests.createSuccess'))
     showAddForm.value = false
@@ -580,17 +1110,64 @@ const handleCreate = async () => {
   }
 }
 
-const handleToggleEnabled = async (plan: ScheduledTestPlan, enabled: boolean) => {
+const isConflict = (error: any) => error?.status === 409 || error?.response?.status === 409
+
+const applyUpdatedPlan = (updated: ScheduledTestPlan) => {
+  const index = plans.value.findIndex((plan) => plan.id === updated.id)
+  if (index !== -1) plans.value[index] = updated
+}
+
+const executePlanUpdate = async (
+  plan: ScheduledTestPlan,
+  request: UpdateScheduledTestPlanRequest,
+  closeEditOnSuccess: boolean,
+  restoreOwnedAccount = false
+) => {
   try {
-    const updated = await adminAPI.scheduledTests.update(plan.id, { enabled })
-    const index = plans.value.findIndex((p) => p.id === plan.id)
-    if (index !== -1) {
-      plans.value[index] = updated
-    }
+    const updated = restoreOwnedAccount
+      ? await adminAPI.scheduledTests.update(plan.id, request, { restore_owned_account: true })
+      : await adminAPI.scheduledTests.update(plan.id, request)
+    applyUpdatedPlan(updated)
     appStore.showSuccess(t('admin.scheduledTests.updateSuccess'))
+    if (closeEditOnSuccess) editingPlanId.value = null
   } catch (error: any) {
+    if (!restoreOwnedAccount && request.enabled === false && isConflict(error)) {
+      pendingOwnershipUpdate.value = { plan, request, closeEditOnSuccess }
+      return
+    }
     appStore.showError(error?.message || 'Failed to update plan')
+  } finally {
+    toggleRenderVersion.value += 1
   }
+}
+
+const requestPlanUpdate = async (
+  plan: ScheduledTestPlan,
+  request: UpdateScheduledTestPlanRequest,
+  closeEditOnSuccess: boolean
+) => {
+  if (request.enabled === false && plan.owns_inactive_account) {
+    pendingOwnershipUpdate.value = { plan, request, closeEditOnSuccess }
+    toggleRenderVersion.value += 1
+    return
+  }
+  await executePlanUpdate(plan, request, closeEditOnSuccess)
+}
+
+const confirmOwnershipUpdate = async () => {
+  const pending = pendingOwnershipUpdate.value
+  if (!pending) return
+  pendingOwnershipUpdate.value = null
+  await executePlanUpdate(pending.plan, pending.request, pending.closeEditOnSuccess, true)
+}
+
+const cancelOwnershipUpdate = () => {
+  pendingOwnershipUpdate.value = null
+  toggleRenderVersion.value += 1
+}
+
+const handleToggleEnabled = async (plan: ScheduledTestPlan, enabled: boolean) => {
+  await requestPlanUpdate(plan, { enabled }, false)
 }
 
 const startEdit = (plan: ScheduledTestPlan) => {
@@ -600,6 +1177,10 @@ const startEdit = (plan: ScheduledTestPlan) => {
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
   editForm.auto_recover = plan.auto_recover
+  editForm.timeout_protection_mode = plan.timeout_protection_mode || 'off'
+  editForm.timeout_seconds = String(plan.timeout_seconds ?? 60)
+  editForm.consecutive_timeout_threshold = String(plan.consecutive_timeout_threshold ?? 3)
+  editForm.retry_delays_seconds = (plan.retry_delays_seconds ?? [10, 20]).join(', ')
 }
 
 const cancelEdit = () => {
@@ -608,23 +1189,32 @@ const cancelEdit = () => {
 
 const handleEdit = async () => {
   if (!editingPlanId.value || !editForm.model_id || !editForm.cron_expression) return
+  const plan = plans.value.find((candidate) => candidate.id === editingPlanId.value)
+  if (!plan) return
+  const retryDelays = parseRetryDelaysOrShowError(editForm.retry_delays_seconds)
+  if (retryDelays === null) return
+  const timeoutNumbers = parseTimeoutNumbersOrShowError(
+    editForm.timeout_seconds,
+    editForm.consecutive_timeout_threshold
+  )
+  if (timeoutNumbers === null) return
   updating.value = true
   try {
-    const updated = await adminAPI.scheduledTests.update(editingPlanId.value, {
+    await requestPlanUpdate(plan, {
       model_id: editForm.model_id,
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,
-      auto_recover: editForm.auto_recover
-    })
-    const index = plans.value.findIndex((p) => p.id === editingPlanId.value)
-    if (index !== -1) {
-      plans.value[index] = updated
-    }
-    appStore.showSuccess(t('admin.scheduledTests.updateSuccess'))
-    editingPlanId.value = null
-  } catch (error: any) {
-    appStore.showError(error?.message || 'Failed to update plan')
+      auto_recover: editForm.auto_recover,
+      timeout_protection_mode: editForm.timeout_protection_mode,
+      ...(timeoutNumbers.timeoutSeconds !== undefined && {
+        timeout_seconds: timeoutNumbers.timeoutSeconds
+      }),
+      ...(timeoutNumbers.threshold !== undefined && {
+        consecutive_timeout_threshold: timeoutNumbers.threshold
+      }),
+      retry_delays_seconds: retryDelays
+    }, true)
   } finally {
     updating.value = false
   }
@@ -632,24 +1222,39 @@ const handleEdit = async () => {
 
 const confirmDeletePlan = (plan: ScheduledTestPlan) => {
   deletingPlan.value = plan
+  deleteRequiresOwnershipRestore.value = plan.owns_inactive_account
   showDeleteConfirm.value = true
+}
+
+const cancelDelete = () => {
+  showDeleteConfirm.value = false
+  deletingPlan.value = null
+  deleteRequiresOwnershipRestore.value = false
 }
 
 const handleDelete = async () => {
   if (!deletingPlan.value) return
+  const plan = deletingPlan.value
   try {
-    await adminAPI.scheduledTests.delete(deletingPlan.value.id)
+    if (deleteRequiresOwnershipRestore.value) {
+      await adminAPI.scheduledTests.delete(plan.id, { restore_owned_account: true })
+    } else {
+      await adminAPI.scheduledTests.delete(plan.id)
+    }
     appStore.showSuccess(t('admin.scheduledTests.deleteSuccess'))
-    plans.value = plans.value.filter((p) => p.id !== deletingPlan.value!.id)
-    if (expandedPlanId.value === deletingPlan.value.id) {
+    plans.value = plans.value.filter((candidate) => candidate.id !== plan.id)
+    if (expandedPlanId.value === plan.id) {
       expandedPlanId.value = null
       results.value = []
     }
+    cancelDelete()
   } catch (error: any) {
+    if (!deleteRequiresOwnershipRestore.value && isConflict(error)) {
+      deleteRequiresOwnershipRestore.value = true
+      return
+    }
     appStore.showError(error?.message || 'Failed to delete plan')
-  } finally {
-    showDeleteConfirm.value = false
-    deletingPlan.value = null
+    cancelDelete()
   }
 }
 
@@ -663,15 +1268,7 @@ const toggleExpand = async (planId: number) => {
 
   expandedPlanId.value = planId
   expandedResultIds.clear()
-  loadingResults.value = true
-  try {
-    results.value = await adminAPI.scheduledTests.listResults(planId, 20)
-  } catch (error: any) {
-    appStore.showError(error?.message || 'Failed to load results')
-    results.value = []
-  } finally {
-    loadingResults.value = false
-  }
+  await loadResults(planId)
 }
 
 const toggleResultDetail = (resultId: number) => {

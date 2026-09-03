@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -20,20 +21,29 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 }
 
 type createScheduledTestPlanRequest struct {
-	AccountID      int64  `json:"account_id" binding:"required"`
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression" binding:"required"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	AccountID                   int64  `json:"account_id" binding:"required"`
+	ModelID                     string `json:"model_id"`
+	CronExpression              string `json:"cron_expression" binding:"required"`
+	Enabled                     *bool  `json:"enabled"`
+	MaxResults                  int    `json:"max_results"`
+	AutoRecover                 *bool  `json:"auto_recover"`
+	TimeoutProtectionMode       string `json:"timeout_protection_mode" binding:"omitempty,oneof=off shadow enforce"`
+	TimeoutSeconds              *int   `json:"timeout_seconds"`
+	ConsecutiveTimeoutThreshold *int   `json:"consecutive_timeout_threshold"`
+	RetryDelaysSeconds          *[]int `json:"retry_delays_seconds"`
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID                     string  `json:"model_id"`
+	CronExpression              string  `json:"cron_expression"`
+	Enabled                     *bool   `json:"enabled"`
+	MaxResults                  int     `json:"max_results"`
+	AutoRecover                 *bool   `json:"auto_recover"`
+	TimeoutProtectionMode       *string `json:"timeout_protection_mode" binding:"omitempty,oneof=off shadow enforce"`
+	TimeoutSeconds              *int    `json:"timeout_seconds"`
+	ConsecutiveTimeoutThreshold *int    `json:"consecutive_timeout_threshold"`
+	RetryDelaysSeconds          *[]int  `json:"retry_delays_seconds"`
+	RestoreOwnedAccount         bool    `json:"restore_owned_account"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -72,6 +82,19 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	}
 	if req.AutoRecover != nil {
 		plan.AutoRecover = *req.AutoRecover
+	}
+	plan.TimeoutProtectionMode = req.TimeoutProtectionMode
+	if req.TimeoutSeconds != nil {
+		plan.TimeoutSeconds = *req.TimeoutSeconds
+		plan.TimeoutSecondsSet = true
+	}
+	if req.ConsecutiveTimeoutThreshold != nil {
+		plan.ConsecutiveTimeoutThreshold = *req.ConsecutiveTimeoutThreshold
+		plan.ConsecutiveTimeoutThresholdSet = true
+	}
+	if req.RetryDelaysSeconds != nil {
+		plan.RetryDelaysSeconds = *req.RetryDelaysSeconds
+		plan.RetryDelaysSecondsSet = true
 	}
 
 	created, err := h.scheduledTestSvc.CreatePlan(c.Request.Context(), plan)
@@ -117,8 +140,32 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 	if req.AutoRecover != nil {
 		existing.AutoRecover = *req.AutoRecover
 	}
+	if req.TimeoutProtectionMode != nil {
+		existing.TimeoutProtectionMode = *req.TimeoutProtectionMode
+	}
+	if req.TimeoutSeconds != nil {
+		existing.TimeoutSeconds = *req.TimeoutSeconds
+		existing.TimeoutSecondsSet = true
+	}
+	if req.ConsecutiveTimeoutThreshold != nil {
+		existing.ConsecutiveTimeoutThreshold = *req.ConsecutiveTimeoutThreshold
+		existing.ConsecutiveTimeoutThresholdSet = true
+	}
+	if req.RetryDelaysSeconds != nil {
+		existing.RetryDelaysSeconds = *req.RetryDelaysSeconds
+		existing.RetryDelaysSecondsSet = true
+	}
 
-	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)
+	restoreOwnedAccount := req.RestoreOwnedAccount
+	if queryRestore, parseErr := strconv.ParseBool(c.Query("restore_owned_account")); parseErr == nil {
+		restoreOwnedAccount = restoreOwnedAccount || queryRestore
+	}
+	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing, restoreOwnedAccount)
+	if errors.Is(err, service.ErrScheduledTestOwnershipConflict) ||
+		errors.Is(err, service.ErrScheduledTestOwnershipReleaseFailed) {
+		response.Error(c, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -134,7 +181,13 @@ func (h *ScheduledTestHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.scheduledTestSvc.DeletePlan(c.Request.Context(), planID); err != nil {
+	restoreOwnedAccount, _ := strconv.ParseBool(c.Query("restore_owned_account"))
+	if err := h.scheduledTestSvc.DeletePlan(c.Request.Context(), planID, restoreOwnedAccount); err != nil {
+		if errors.Is(err, service.ErrScheduledTestOwnershipConflict) ||
+			errors.Is(err, service.ErrScheduledTestOwnershipReleaseFailed) {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}
