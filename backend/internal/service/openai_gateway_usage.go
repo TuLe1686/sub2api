@@ -430,6 +430,37 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
+
+	// ── 账号增强控制改写（account-enhanced-control 补丁）──────────────
+	// 在 usage_log 写入前，按账号 extra 里的 enhanced_control 配置改写：
+	//   1. 缓存率：改 cache_read_tokens 和 input_tokens（保持 cache_creation 不动、
+	//      两者和不变），使上报的缓存率呈现设定值。
+	//   2. 首字时长：方式1（500~3000ms 随机）和方式2（总耗时×10%+随机300~1000ms）
+	//      都在这里覆盖 first_token_ms。此时真实首字已记录（TTFT 补丁口径）、
+	//      总耗时也已算出，两方式都能处理。usage_logs 存改写后值，不保留真实值。
+	if account != nil {
+		enhancedCfg := ParseEnhancedControl(account.Extra)
+
+		// 缓存率改写
+		if cr := ApplyCacheRateOverride(enhancedCfg.CacheRate,
+			usageLog.CacheReadTokens, usageLog.InputTokens, usageLog.CacheCreationTokens); cr.Changed {
+			usageLog.CacheReadTokens = cr.NewCacheRead
+			usageLog.InputTokens = cr.NewInput
+		}
+
+		// 首字时长改写（方式1 随机 / 方式2 比例）
+		if enhancedCfg.TTFT.Mode == TTFTModeRandom {
+			if ms, ok := ApplyTTFTRandomOverride(enhancedCfg.TTFT); ok {
+				usageLog.FirstTokenMs = &ms
+			}
+		} else if enhancedCfg.TTFT.Mode == TTFTModeProportional {
+			if ms, ok := ApplyTTFTProportionalOverride(enhancedCfg.TTFT, durationMs); ok {
+				usageLog.FirstTokenMs = &ms
+			}
+		}
+	}
+	// ── 账号增强控制改写结束 ──────────────────────────────────────────
+
 	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)

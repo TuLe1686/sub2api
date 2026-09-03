@@ -1560,5 +1560,26 @@ export default {
       }
     },
 
+    // 账号管理【增强】
+    accountsEnhanced: {
+      title: '账号管理【增强】',
+      description: '为每个启用账号独立设置缓存率改写和首字时长控制',
+      activeCount: '共 {count} 个启用账号',
+      noAccounts: '暂无启用账号',
+      cacheRate: '缓存率设置',
+      ttftControl: '首字时长控制',
+      reduceRange: '随机减少区间',
+      fixedValueLabel: '固定缓存率',
+      modes: {
+        off: '关闭',
+        randomReduce: '随机减少',
+        fixedValue: '固定值',
+        ttftRandom: '随机首字（500-3000ms）',
+        ttftProportional: '比例首字（总耗时10%+随机）'
+      },
+      ttftRandomHint: '500ms ~ 3000ms 随机值',
+      ttftProportionalHint: '总耗时 × 10% + 随机 300-1000ms'
+    },
+
     // Scheduled Tests
 }
