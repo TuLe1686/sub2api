@@ -439,6 +439,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// 桥接产物是 Responses 形态；grok 侧随后仍会走 patchGrokResponsesBody →
+	// sanitize，composer 系列不支持的 effort 会被自动剥离。
+	body = ApplyEnhancedReasoningEffortForAccount(account, body, true)
+	// ── 思考强度注入结束 ──
 	grokIntentSourceBody := append([]byte(nil), body...)
 	_, grokExplicitToolsField := openAIWSHTTPBridgeRawField(grokIntentSourceBody, "tools")
 	grokExplicitToolIntent := account.Platform == PlatformGrok && hasGrokResponsesToolIntent(grokIntentSourceBody)

@@ -299,6 +299,17 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 	}
 
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// 放在分组策略之后 ⇒ 账号级配置最终生效（账号级优先）。
+	// responsesBody 由 Anthropic 桥接合成，客户端未传 output_config.effort 时
+	// 桥接会填默认值，因此 fill 模式的「显式」判定回看原始 Anthropic 请求体。
+	if injectedBody, injected := ApplyEnhancedReasoningEffortForAnthropicEntry(account, responsesBody, body, true); injected {
+		responsesBody = injectedBody
+		// 计费读结构体而不是 JSON body；Reasoning 为 nil 时也要分配并回写。
+		responsesReq.Reasoning = syncEnhancedResponsesReasoningEffort(responsesReq.Reasoning, responsesBody)
+	}
+	// ── 思考强度注入结束 ──
+
 	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	// Mirrors the Claude anthropic-beta "fast-mode-2026-02-01" filter, but keyed
 	// on the body-level service_tier field (priority/flex).

@@ -1609,5 +1609,36 @@ export default {
       }
     },
 
+    // 账号管理【增强】
+    accountsEnhanced: {
+      title: '账号管理【增强】',
+      description: '为每个启用账号独立设置缓存率改写和首字时长控制',
+      activeCount: '共 {count} 个启用账号',
+      noAccounts: '暂无启用账号',
+      cacheRate: '缓存率设置',
+      ttftControl: '首字时长控制',
+      reduceRange: '随机减少区间',
+      fixedValueLabel: '固定缓存率',
+      modes: {
+        off: '关闭',
+        randomReduce: '随机减少',
+        fixedValue: '固定值',
+        ttftRandom: '随机首字（500-3000ms）',
+        ttftProportional: '比例首字（总耗时10%+随机）',
+        effortOverride: '无条件覆盖',
+        effortFill: '补缺省'
+      },
+      ttftRandomHint: '500ms ~ 3000ms 随机值',
+      ttftProportionalHint: '总耗时 × 10% + 随机 300-1000ms',
+      reasoningEffort: '思考强度强制',
+      effortOverrideHint: '无条件覆盖：客户端传什么都会被改成下方配置值',
+      effortFillHint: '补缺省：客户端显式传了 effort 就尊重，只在没传时注入',
+      effortModelPlaceholder: '模型 ID（支持 * 通配，如 grok-*）',
+      effortHint: '按模型 ID 匹配后注入思考强度；精确匹配优先于通配，多个通配命中时取更具体的一条',
+      addRule: '添加规则',
+      removeRule: '删除',
+      noRules: '尚未添加规则'
+    },
+
     // Scheduled Tests
 }
