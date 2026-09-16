@@ -307,7 +307,7 @@ describe('admin AccountsView — 账号行展示', () => {
     wrapper.unmount()
   })
 
-  it('仅将具有安全 base_url 的 API Key 账号名称链接到站点主页', async () => {
+  it('账号名称只显示文本，不跳转到 Base URL 站点', async () => {
     listAccounts.mockResolvedValue({
       items: [
         { id: 101, name: 'relay-account', platform: 'openai', type: 'apikey', credentials: { base_url: 'https://relay.example.com/api/v1/' } },
@@ -323,25 +323,9 @@ describe('admin AccountsView — 账号行展示', () => {
     const wrapper = mountViewWithRow()
     await flushPromises()
 
-    const links = wrapper.findAll('a')
-    expect(links).toHaveLength(1)
-    const [link] = links
-    expect(link.text()).toBe('relay-account')
-    expect(link.attributes()).toMatchObject({
-      href: 'https://relay.example.com',
-      target: '_blank',
-      rel: 'noopener noreferrer',
-    })
-    expect(link.classes()).toEqual(expect.arrayContaining([
-      'border-dotted',
-      'text-gray-900',
-      'dark:text-white',
-    ]))
-    expect(link.classes()).not.toContain('text-primary-600')
-    const tooltip = wrapper.findComponent(HelpTooltip)
-    expect(tooltip.props('content')).toBe('https://relay.example.com')
-    expect(tooltip.props('widthClass')).toBe('w-max max-w-sm break-all')
-    expect(tooltip.classes()).toEqual(expect.arrayContaining(['self-start']))
+    expect(wrapper.findAll('a')).toHaveLength(0)
+    expect(wrapper.findComponent(HelpTooltip).exists()).toBe(false)
+    expect(wrapper.text()).toContain('relay-account')
     expect(wrapper.text()).toContain('oauth-account')
     expect(wrapper.text()).toContain('invalid-url')
 
