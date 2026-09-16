@@ -104,7 +104,7 @@ func (p *AntigravityTokenProvider) GetAccessToken(ctx context.Context, account *
 		result, err := p.refreshAPI.RefreshIfNeeded(refreshCtx, account, p.executor, antigravityTokenRefreshSkew)
 		if err != nil {
 			// 标记账号临时不可调度，避免后续请求继续命中
-			p.markTempUnschedulable(account, err)
+			p.markTempUnschedulable(ctx, account, err)
 			if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
 				return "", err
 			}
@@ -190,8 +190,8 @@ func (p *AntigravityTokenProvider) shouldAttemptBackfill(accountID int64) bool {
 // markTempUnschedulable 在请求路径上 token 刷新失败时标记账号临时不可调度。
 // 同时写 DB 和 Redis 缓存，确保调度器立即跳过该账号。
 // 使用 background context 因为请求 context 可能已超时。
-func (p *AntigravityTokenProvider) markTempUnschedulable(account *Account, refreshErr error) {
-	if p.accountRepo == nil || account == nil {
+func (p *AntigravityTokenProvider) markTempUnschedulable(ctx context.Context, account *Account, refreshErr error) {
+	if p.accountRepo == nil || account == nil || ScheduledTestObserveOnly(ctx) {
 		return
 	}
 	now := time.Now()
