@@ -330,6 +330,17 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('hides the Base URL field until the operator expands it', async () => {
+    const wrapper = mountModal(buildAccount())
+
+    expect(wrapper.find('input[placeholder="https://api.openai.com"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="edit-base-url-toggle"]').trigger('click')
+
+    expect((wrapper.get('input[placeholder="https://api.openai.com"]').element as HTMLInputElement).value)
+      .toBe('https://api.openai.com')
+  })
+
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2028-02-29T12:34:00'))
@@ -1043,6 +1054,7 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
+    await wrapper.get('[data-testid="edit-base-url-toggle"]').trigger('click')
     expect((wrapper.get('input[placeholder="https://api.x.ai/v1"]').element as HTMLInputElement).value)
       .toBe('https://api.x.ai/v1')
 

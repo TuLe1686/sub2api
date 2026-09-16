@@ -29,38 +29,50 @@
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
-          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
-          <input
-            v-model="editBaseUrl"
-            type="text"
-            class="input"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'https://api.openai.com'
-                : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : account.platform === 'antigravity'
-                    ? 'https://cloudcode-pa.googleapis.com'
-                    : account.platform === 'grok'
-                      ? 'https://api.x.ai/v1'
-                      : 'https://api.anthropic.com'
-            "
-          />
-          <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
-          <GrokBaseUrlPresets
-            v-if="account.platform === 'grok'"
-            class="mt-2"
-            @select="editBaseUrl = $event"
-          />
-          <CnBaseUrlPresets
-            v-if="isCNApiKeyAccount && account.platform !== 'opencode_go'"
-            class="mt-2"
-            :platform="cnPresetPlatform"
-            :mode="editAccountMode"
-            :protocol="editApiProtocol"
-            :current-url="editBaseUrl"
-            @select="onCnPresetSelect"
-          />
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <label class="input-label mb-0">{{ t('admin.accounts.baseUrl') }}</label>
+            <button
+              type="button"
+              data-testid="edit-base-url-toggle"
+              class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              @click="showEditBaseUrl = !showEditBaseUrl"
+            >
+              {{ showEditBaseUrl ? t('common.collapse') : t('common.expand') }}
+            </button>
+          </div>
+          <div v-if="showEditBaseUrl">
+            <input
+              v-model="editBaseUrl"
+              type="text"
+              class="input"
+              :placeholder="
+                account.platform === 'openai'
+                  ? 'https://api.openai.com'
+                  : account.platform === 'gemini'
+                    ? 'https://generativelanguage.googleapis.com'
+                    : account.platform === 'antigravity'
+                      ? 'https://cloudcode-pa.googleapis.com'
+                      : account.platform === 'grok'
+                        ? 'https://api.x.ai/v1'
+                        : 'https://api.anthropic.com'
+              "
+            />
+            <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
+            <GrokBaseUrlPresets
+              v-if="account.platform === 'grok'"
+              class="mt-2"
+              @select="editBaseUrl = $event"
+            />
+            <CnBaseUrlPresets
+              v-if="isCNApiKeyAccount && account.platform !== 'opencode_go'"
+              class="mt-2"
+              :platform="cnPresetPlatform"
+              :mode="editAccountMode"
+              :protocol="editApiProtocol"
+              :current-url="editBaseUrl"
+              @select="onCnPresetSelect"
+            />
+          </div>
         </div>
         <div v-else>
           <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.endpoints') }}</label>
@@ -3181,6 +3193,7 @@ interface TempUnschedRuleForm {
 // State
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
+const showEditBaseUrl = ref(false)
 const editApiKey = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
@@ -3941,6 +3954,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
   // 进入回填窗口：抑制 CN 模式/协议 watcher 联动重置 base_url（见 syncingForm 注释）。
   syncingForm.value = true
+  showEditBaseUrl.value = false
   void nextTick(() => {
     syncingForm.value = false
   })
