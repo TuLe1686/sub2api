@@ -94,16 +94,22 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// Grok OAuth 必须先用原始 body 做 Responses 桥 eligibility，再注入。
+	// 注入 reasoning_effort 会让 eligibility 报 unsupported_reasoning_effort，
+	// 把本可走桥的请求打到 raw CC。其余分支仍拿到注入后的 body。
+	body, grokChatBridgeEligible, grokChatBridgeReason := applyEnhancedChatReasoningEffortAfterGrokEligibility(account, body)
+	// ── 思考强度注入结束 ──
+
 	if account.Platform == PlatformGrok {
+		if grokChatBridgeEligible {
+			return s.forwardGrokChatCompletionsViaResponses(ctx, c, account, body, promptCacheKey, defaultMappedModel)
+		}
 		if account.IsGrokOAuth() {
-			if eligible, reason := grokChatResponsesBridgeEligibility(body); eligible {
-				return s.forwardGrokChatCompletionsViaResponses(ctx, c, account, body, promptCacheKey, defaultMappedModel)
-			} else {
-				logger.L().Debug("grok chat_completions: using raw fallback",
-					zap.Int64("account_id", account.ID),
-					zap.String("reason", reason),
-				)
-			}
+			logger.L().Debug("grok chat_completions: using raw fallback",
+				zap.Int64("account_id", account.ID),
+				zap.String("reason", grokChatBridgeReason),
+			)
 		}
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
