@@ -37,3 +37,13 @@ func TestScheduledTestTimeoutGuardMigrationDefinesDurableExecutionAndOwnership(t
 	require.Contains(t, indexSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS")
 	require.Contains(t, indexSQL, "ON scheduled_test_results(plan_id, execution_id)")
 }
+
+func TestScheduledTestFailureKindMigrationAddsObservationColumn(t *testing.T) {
+	content, err := FS.ReadFile("239_scheduled_test_failure_kind.sql")
+	require.NoError(t, err)
+
+	sql := strings.Join(strings.Fields(string(content)), " ")
+	require.Contains(t, sql, "ALTER TABLE scheduled_test_results")
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS failure_kind VARCHAR(32) NOT NULL DEFAULT ''")
+	require.NotContains(t, sql, "CHECK")
+}

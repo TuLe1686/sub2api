@@ -198,8 +198,12 @@ func (s *ScheduledTestRunnerService) runOnePlan(parent context.Context, plan *Sc
 	}
 }
 
+// canRunScheduledTestAutoRecover 决定原生 auto-recover 是否接管恢复通道。
+// 判定基于「有效模式」而不是保存模式：guard 被全局 kill switch（或强制影子把
+// enforce 降级）旁路后有效模式为 off，此时恢复能力必须交还给原生 auto-recover，
+// 否则计划会两头都不管——guard 不处置，原生恢复也被保存模式挡掉。
 func (s *ScheduledTestRunnerService) canRunScheduledTestAutoRecover(ctx context.Context, plan *ScheduledTestPlan) bool {
-	if plan == nil || plan.TimeoutProtectionMode != ScheduledTestTimeoutProtectionOff {
+	if plan == nil || scheduledTestEffectiveMode(plan) != ScheduledTestTimeoutProtectionOff {
 		return false
 	}
 	owned, err := s.planRepo.HasAccountOwnership(ctx, plan.AccountID)

@@ -308,7 +308,7 @@ func TestScheduledTestRunnerPreservesExplicitZeroCircuitRatio(t *testing.T) {
 	require.Zero(t, runner.timeoutGuardCircuitTimeoutRatio())
 }
 
-func TestScheduledTestRunnerRestrictsOrdinaryAutoRecoverToUnownedOffPlans(t *testing.T) {
+func TestScheduledTestRunnerRestrictsOrdinaryAutoRecoverToUnownedEffectiveOffPlans(t *testing.T) {
 	repo := &scheduledTestPlanRepositoryStub{hasAccountOwnership: true}
 	runner := NewScheduledTestRunnerService(repo, nil, &scheduledTestAttemptStub{}, nil, nil)
 	plan := &ScheduledTestPlan{
@@ -324,6 +324,64 @@ func TestScheduledTestRunnerRestrictsOrdinaryAutoRecoverToUnownedOffPlans(t *tes
 
 	plan.TimeoutProtectionMode = ScheduledTestTimeoutProtectionEnforce
 	require.False(t, runner.canRunScheduledTestAutoRecover(context.Background(), plan))
+
+	// guard 被 kill switch / 强制影子旁路后有效模式回退为 off，
+	// 此时原生的 auto-recover 必须重新接管，否则恢复通道两头都不管。
+	plan.EffectiveTimeoutProtectionMode = ScheduledTestTimeoutProtectionOff
+	require.True(t, runner.canRunScheduledTestAutoRecover(context.Background(), plan))
+
+	plan.EffectiveTimeoutProtectionMode = ScheduledTestTimeoutProtectionShadow
+	require.False(t, runner.canRunScheduledTestAutoRecover(context.Background(), plan))
+}
+
+func TestClassifyScheduledTestFailureKind(t *testing.T) {
+	cases := []struct {
+		name     string
+		message  string
+		expected string
+	}{
+		{"http 503", `API returned 503: {"error":{"message":"Service temporarily unavailable"}}`, ScheduledTestFailureKindUpstream},
+		{"http 502", `API returned 502: bad gateway`, ScheduledTestFailureKindUpstream},
+		{"http 401", `API returned 401: {"error":{"message":"invalid_api_key"}}`, ScheduledTestFailureKindAuth},
+		{"http 403", `Grok Responses API returned 403: forbidden`, ScheduledTestFailureKindAuth},
+		{"http 429", `API returned 429: rate limit exceeded`, ScheduledTestFailureKindRateLimited},
+		{"http 400", `API returned 400: bad request`, ScheduledTestFailureKindBusiness},
+		{"http 404", `API returned 404: model not found`, ScheduledTestFailureKindBusiness},
+		{"dial refused", `Request failed: dial tcp 1.2.3.4:443: connect: connection refused`, ScheduledTestFailureKindNetwork},
+		{"dns", `Request failed: dial tcp: lookup upstream.example: no such host`, ScheduledTestFailureKindNetwork},
+		{"auth text", `Authentication failed (401): bad key`, ScheduledTestFailureKindAuth},
+		{"forbidden text", `permission denied for this model`, ScheduledTestFailureKindAuth},
+		{"overload text", `upstream overloaded`, ScheduledTestFailureKindUpstream},
+		{"rate limit text", `too many requests`, ScheduledTestFailureKindRateLimited},
+		{"unknown text", `something unexpected`, ScheduledTestFailureKindUnknown},
+		{"empty", ``, ScheduledTestFailureKindUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &ScheduledTestResult{ErrorMessage: tc.message}
+			require.Equal(t, tc.expected, classifyScheduledTestFailureKind(result, nil))
+		})
+	}
+}
+
+func TestClassifyScheduledTestFailureKindFallsBackToRunError(t *testing.T) {
+	require.Equal(t, ScheduledTestFailureKindNetwork,
+		classifyScheduledTestFailureKind(&ScheduledTestResult{}, errors.New("Request failed: connection reset by peer")))
+	require.Equal(t, ScheduledTestFailureKindUnknown, classifyScheduledTestFailureKind(nil, nil))
+}
+
+func TestClassifyScheduledTestAttemptRecordsFailureKindOnlyForFailures(t *testing.T) {
+	timeoutResult := &ScheduledTestResult{Status: ScheduledTestStatusFailed, ErrorMessage: "API returned 503: unavailable"}
+	require.Equal(t, ScheduledTestClassificationTimeout, classifyScheduledTestAttempt(timeoutResult, context.DeadlineExceeded, nil))
+	require.Empty(t, timeoutResult.FailureKind)
+
+	failureResult := &ScheduledTestResult{Status: ScheduledTestStatusFailed, ErrorMessage: "API returned 503: unavailable"}
+	require.Equal(t, ScheduledTestClassificationFailure, classifyScheduledTestAttempt(failureResult, errors.New("API returned 503: unavailable"), nil))
+	require.Equal(t, ScheduledTestFailureKindUpstream, failureResult.FailureKind)
+
+	successResult := &ScheduledTestResult{Status: ScheduledTestStatusSuccess}
+	require.Equal(t, ScheduledTestClassificationSuccess, classifyScheduledTestAttempt(successResult, nil, nil))
+	require.Empty(t, successResult.FailureKind)
 }
 
 func TestScheduledTestRunnerCancelsExecutionBeforeUnrenewedLeaseExpires(t *testing.T) {

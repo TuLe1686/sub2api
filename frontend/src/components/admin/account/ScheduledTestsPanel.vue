@@ -652,6 +652,10 @@
                     <dt class="inline font-medium">{{ t('admin.scheduledTests.classification') }}:</dt>
                     <dd class="inline"> {{ formatScheduledTestEnum('classifications', result.classification) }}</dd>
                   </div>
+                  <div v-if="result.classification === 'failure' && result.failure_kind">
+                    <dt class="inline font-medium">{{ t('admin.scheduledTests.failureKind') }}:</dt>
+                    <dd class="inline"> {{ formatScheduledTestEnum('failureKinds', result.failure_kind) }}</dd>
+                  </div>
                   <div v-if="result.protection_action">
                     <dt class="inline font-medium">{{ t('admin.scheduledTests.protectionAction') }}:</dt>
                     <dd class="inline"> {{ formatScheduledTestEnum('protectionActions', result.protection_action) }}</dd>
@@ -927,6 +931,7 @@ const formatTimeoutProtectionOverrideReason = (reason: string): string => {
 const scheduledTestEnumValues = {
   runModes: ['normal', 'recovery'],
   classifications: ['success', 'timeout', 'failure'],
+  failureKinds: ['auth', 'rate_limited', 'upstream', 'network', 'business', 'unknown'],
   protectionActions: ['none', 'would_inactivate', 'inactivated', 'recovered', 'blocked'],
   blockedReasons: ['kill_switch', 'platform_circuit_open', 'disable_budget_exhausted', 'account_already_owned', 'manual_override']
 } as const

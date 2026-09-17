@@ -73,6 +73,15 @@ export default {
         timeout: 'Timeout',
         failure: 'Non-timeout Failure'
       },
+      failureKind: 'Failure Kind',
+      failureKinds: {
+        auth: 'Credential/Permission',
+        rate_limited: 'Rate Limited',
+        upstream: 'Upstream Service',
+        network: 'Network/Connection',
+        business: 'Business Error',
+        unknown: 'Unrecognized'
+      },
       protectionAction: 'Protection Action',
       protectionActions: {
         none: 'None',

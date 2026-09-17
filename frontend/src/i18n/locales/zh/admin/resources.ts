@@ -73,6 +73,15 @@ export default {
         timeout: '超时',
         failure: '非超时失败'
       },
+      failureKind: '失败子类',
+      failureKinds: {
+        auth: '凭据/权限',
+        rate_limited: '限流',
+        upstream: '上游服务',
+        network: '网络/连接',
+        business: '业务错误',
+        unknown: '未识别'
+      },
       protectionAction: '保护动作',
       protectionActions: {
         none: '无',

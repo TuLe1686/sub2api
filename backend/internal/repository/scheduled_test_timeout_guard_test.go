@@ -86,11 +86,11 @@ func TestRenewScheduledTestClaimUsesLockedDatabaseTime(t *testing.T) {
 func scheduledTestResultRows(result *service.ScheduledTestResult) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "plan_id", "execution_id", "status", "run_mode", "attempt_count",
-		"classification", "protection_action", "blocked_reason", "response_text",
+		"classification", "failure_kind", "protection_action", "blocked_reason", "response_text",
 		"error_message", "latency_ms", "started_at", "finished_at", "created_at",
 	}).AddRow(
 		int64(1), result.PlanID, result.ExecutionID, result.Status, result.RunMode, result.AttemptCount,
-		result.Classification, result.ProtectionAction, result.BlockedReason, result.ResponseText,
+		result.Classification, result.FailureKind, result.ProtectionAction, result.BlockedReason, result.ResponseText,
 		result.ErrorMessage, result.LatencyMs, result.StartedAt, result.FinishedAt, result.FinishedAt,
 	)
 }

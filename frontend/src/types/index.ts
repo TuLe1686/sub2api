@@ -2392,6 +2392,14 @@ export interface TotpLogin2FARequest {
 export type TimeoutProtectionMode = 'off' | 'shadow' | 'enforce'
 export type ScheduledTestRunMode = 'normal' | 'recovery'
 export type ScheduledTestClassification = 'success' | 'timeout' | 'failure'
+// 失败子类是观察字段：只记录分类，不参与计数、熔断或保护动作。
+export type ScheduledTestFailureKind =
+  | 'auth'
+  | 'rate_limited'
+  | 'upstream'
+  | 'network'
+  | 'business'
+  | 'unknown'
 export type ScheduledTestProtectionAction =
   | 'none'
   | 'would_inactivate'
@@ -2432,6 +2440,7 @@ export interface ScheduledTestResult {
   run_mode: ScheduledTestRunMode
   attempt_count: number
   classification: ScheduledTestClassification
+  failure_kind?: ScheduledTestFailureKind
   protection_action: ScheduledTestProtectionAction
   blocked_reason?: string
   started_at: string

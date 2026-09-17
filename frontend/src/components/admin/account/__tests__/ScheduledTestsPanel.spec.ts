@@ -51,6 +51,8 @@ vi.mock('vue-i18n', async () => {
         'admin.scheduledTests.timeoutProtectionOverrideReasons.force_shadow': 'Forced shadow mode',
         'admin.scheduledTests.runModes.recovery': 'Recovery probe',
         'admin.scheduledTests.classifications.timeout': 'Timeout',
+        'admin.scheduledTests.failureKind': 'Failure kind',
+        'admin.scheduledTests.failureKinds.upstream': 'Upstream Service',
         'admin.scheduledTests.protectionActions.blocked': 'Blocked',
         'admin.scheduledTests.blockedReasons.account_already_owned': 'Account owned by another plan'
       })[key] || key
@@ -182,6 +184,27 @@ describe('ScheduledTestsPanel', () => {
     expect(wrapper.text()).toContain('Blocked reason')
     expect(wrapper.text()).toContain('Account owned by another plan')
     expect(wrapper.text()).toContain('Owns inactive account')
+  })
+
+  it('shows the observed failure kind for non-timeout failures', async () => {
+    listResults.mockResolvedValue([
+      {
+        ...result,
+        classification: 'failure',
+        failure_kind: 'upstream',
+        protection_action: 'none',
+        blocked_reason: ''
+      }
+    ])
+    const wrapper = mountPanel()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('.cursor-pointer').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Failure kind')
+    expect(wrapper.text()).toContain('Upstream Service')
   })
 
   it('creates a plan with timeout protection and parsed retry delays', async () => {

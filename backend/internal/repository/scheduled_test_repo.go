@@ -22,7 +22,7 @@ const scheduledTestPlanColumns = `
 
 const scheduledTestResultColumns = `
 	id, plan_id, execution_id::text, status, run_mode, attempt_count,
-	classification, protection_action, blocked_reason, response_text,
+	classification, failure_kind, protection_action, blocked_reason, response_text,
 	error_message, latency_ms, started_at, finished_at, created_at`
 
 type scheduledTestPlanRepository struct {
@@ -720,15 +720,16 @@ func createScheduledTestResult(ctx context.Context, exec interface {
 	row := exec.QueryRowContext(ctx, `
 		INSERT INTO scheduled_test_results (
 			plan_id, execution_id, status, run_mode, attempt_count, classification,
-			protection_action, blocked_reason, response_text, error_message,
+			failure_kind, protection_action, blocked_reason, response_text, error_message,
 			latency_ms, started_at, finished_at, created_at
 		)
-		VALUES ($1, NULLIF($2, '')::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+		VALUES ($1, NULLIF($2, '')::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
 		ON CONFLICT (plan_id, execution_id) DO UPDATE SET
 			status = EXCLUDED.status,
 			run_mode = EXCLUDED.run_mode,
 			attempt_count = EXCLUDED.attempt_count,
 			classification = EXCLUDED.classification,
+			failure_kind = EXCLUDED.failure_kind,
 			protection_action = EXCLUDED.protection_action,
 			blocked_reason = EXCLUDED.blocked_reason,
 			response_text = EXCLUDED.response_text,
@@ -738,7 +739,7 @@ func createScheduledTestResult(ctx context.Context, exec interface {
 			finished_at = EXCLUDED.finished_at
 		RETURNING `+scheduledTestResultColumns,
 		result.PlanID, result.ExecutionID, result.Status, result.RunMode, result.AttemptCount,
-		result.Classification, result.ProtectionAction, result.BlockedReason,
+		result.Classification, result.FailureKind, result.ProtectionAction, result.BlockedReason,
 		result.ResponseText, result.ErrorMessage, result.LatencyMs,
 		result.StartedAt, result.FinishedAt)
 	return scanResult(row)
@@ -831,7 +832,7 @@ func scanResult(row scannable) (*service.ScheduledTestResult, error) {
 	var executionID sql.NullString
 	if err := row.Scan(
 		&result.ID, &result.PlanID, &executionID, &result.Status, &result.RunMode,
-		&result.AttemptCount, &result.Classification, &result.ProtectionAction,
+		&result.AttemptCount, &result.Classification, &result.FailureKind, &result.ProtectionAction,
 		&result.BlockedReason, &result.ResponseText, &result.ErrorMessage,
 		&result.LatencyMs, &result.StartedAt, &result.FinishedAt, &result.CreatedAt,
 	); err != nil {

@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -115,7 +119,74 @@ func classifyScheduledTestAttempt(result *ScheduledTestResult, runErr, deadlineE
 	if isScheduledTestTimeout(runErr) || isScheduledTestTimeout(deadlineErr) {
 		return ScheduledTestClassificationTimeout
 	}
+	if result != nil {
+		result.FailureKind = classifyScheduledTestFailureKind(result, runErr)
+	}
 	return ScheduledTestClassificationFailure
+}
+
+var scheduledTestHTTPStatusPattern = regexp.MustCompile(`returned (\d{3})`)
+
+// classifyScheduledTestFailureKind 给出失败尝试的观察性子类，只写入结果供展示与统计。
+// 返回值不参与连续计数、平台熔断、停用预算或保护动作，因此这里宁可保守地回退到
+// unknown，也不引入任何会改变处置行为的判定。
+func classifyScheduledTestFailureKind(result *ScheduledTestResult, runErr error) string {
+	message := ""
+	if result != nil {
+		message = strings.TrimSpace(result.ErrorMessage)
+	}
+	if message == "" && runErr != nil {
+		message = strings.TrimSpace(runErr.Error())
+	}
+	if message == "" {
+		return ScheduledTestFailureKindUnknown
+	}
+	if match := scheduledTestHTTPStatusPattern.FindStringSubmatch(message); match != nil {
+		if status, err := strconv.Atoi(match[1]); err == nil {
+			switch {
+			case status == http.StatusUnauthorized || status == http.StatusForbidden:
+				return ScheduledTestFailureKindAuth
+			case status == http.StatusTooManyRequests:
+				return ScheduledTestFailureKindRateLimited
+			case status >= http.StatusInternalServerError:
+				return ScheduledTestFailureKindUpstream
+			case status >= http.StatusBadRequest:
+				return ScheduledTestFailureKindBusiness
+			}
+		}
+	}
+	return classifyScheduledTestFailureKindByText(strings.ToLower(message))
+}
+
+func classifyScheduledTestFailureKindByText(message string) string {
+	switch {
+	case scheduledTestMessageContainsAny(message,
+		"invalid_api_key", "invalid api key", "authentication failed",
+		"unauthorized", "forbidden", "permission denied"):
+		return ScheduledTestFailureKindAuth
+	case scheduledTestMessageContainsAny(message,
+		"rate limit", "rate_limit", "too many requests"):
+		return ScheduledTestFailureKindRateLimited
+	case scheduledTestMessageContainsAny(message,
+		"service temporarily unavailable", "overloaded", "bad gateway",
+		"gateway timeout", "internal server error"):
+		return ScheduledTestFailureKindUpstream
+	case scheduledTestMessageContainsAny(message,
+		"request failed:", "dial tcp", "connection refused", "no such host",
+		"tls handshake", "connection reset", "broken pipe", "unexpected eof",
+		"proxyconnect", "server misbehaving"):
+		return ScheduledTestFailureKindNetwork
+	}
+	return ScheduledTestFailureKindUnknown
+}
+
+func scheduledTestMessageContainsAny(message string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(message, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func isScheduledTestTimeout(err error) bool {

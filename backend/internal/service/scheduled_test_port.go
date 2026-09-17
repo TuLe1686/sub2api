@@ -18,6 +18,15 @@ const (
 	ScheduledTestClassificationTimeout = "timeout"
 	ScheduledTestClassificationFailure = "failure"
 
+	// ScheduledTestFailureKind* 是 classification=failure 时的观察性子类，仅用于记录与展示。
+	// 它们不参与连续计数、平台熔断、停用预算或任何保护动作：失败处置仍由 timeout 链负责。
+	ScheduledTestFailureKindAuth        = "auth"
+	ScheduledTestFailureKindRateLimited = "rate_limited"
+	ScheduledTestFailureKindUpstream    = "upstream"
+	ScheduledTestFailureKindNetwork     = "network"
+	ScheduledTestFailureKindBusiness    = "business"
+	ScheduledTestFailureKindUnknown     = "unknown"
+
 	ScheduledTestRunModeNormal   = "normal"
 	ScheduledTestRunModeRecovery = "recovery"
 
@@ -70,6 +79,7 @@ type ScheduledTestResult struct {
 	RunMode          string    `json:"run_mode"`
 	AttemptCount     int       `json:"attempt_count"`
 	Classification   string    `json:"classification"`
+	FailureKind      string    `json:"failure_kind,omitempty"`
 	ProtectionAction string    `json:"protection_action"`
 	BlockedReason    string    `json:"blocked_reason,omitempty"`
 	ResponseText     string    `json:"response_text"`
