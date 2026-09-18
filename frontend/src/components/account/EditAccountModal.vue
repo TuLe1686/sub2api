@@ -29,50 +29,45 @@
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
-          <div class="mb-2 flex items-center justify-between gap-3">
-            <label class="input-label mb-0">{{ t('admin.accounts.baseUrl') }}</label>
-            <button
-              type="button"
-              data-testid="edit-base-url-toggle"
-              class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-              @click="showEditBaseUrl = !showEditBaseUrl"
-            >
-              {{ showEditBaseUrl ? t('common.collapse') : t('common.expand') }}
-            </button>
-          </div>
-          <div v-if="showEditBaseUrl">
-            <input
-              v-model="editBaseUrl"
-              type="text"
-              class="input"
-              :placeholder="
-                account.platform === 'openai'
-                  ? 'https://api.openai.com'
-                  : account.platform === 'gemini'
-                    ? 'https://generativelanguage.googleapis.com'
-                    : account.platform === 'antigravity'
-                      ? 'https://cloudcode-pa.googleapis.com'
-                      : account.platform === 'grok'
-                        ? 'https://api.x.ai/v1'
-                        : 'https://api.anthropic.com'
-              "
-            />
-            <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
-            <GrokBaseUrlPresets
-              v-if="account.platform === 'grok'"
-              class="mt-2"
-              @select="editBaseUrl = $event"
-            />
-            <CnBaseUrlPresets
-              v-if="isCNApiKeyAccount && account.platform !== 'opencode_go'"
-              class="mt-2"
-              :platform="cnPresetPlatform"
-              :mode="editAccountMode"
-              :protocol="editApiProtocol"
-              :current-url="editBaseUrl"
-              @select="onCnPresetSelect"
-            />
-          </div>
+          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
+          <!-- 与 API Key 同一存储方式：应答不下发原值（只看 credentials_status.has_base_url），
+               输入框恒为空，留空提交即保留服务端原值。 -->
+          <input
+            v-model="editBaseUrl"
+            type="password"
+            class="input font-mono"
+            autocomplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore="true"
+            :placeholder="
+              account.platform === 'openai'
+                ? 'https://api.openai.com'
+                : account.platform === 'gemini'
+                  ? 'https://generativelanguage.googleapis.com'
+                  : account.platform === 'antigravity'
+                    ? 'https://cloudcode-pa.googleapis.com'
+                    : account.platform === 'grok'
+                      ? 'https://api.x.ai/v1'
+                      : 'https://api.anthropic.com'
+            "
+          />
+          <p class="input-hint">{{ t('admin.accounts.baseUrlLeaveEmptyToKeep') }}</p>
+          <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
+          <GrokBaseUrlPresets
+            v-if="account.platform === 'grok'"
+            class="mt-2"
+            @select="editBaseUrl = $event"
+          />
+          <CnBaseUrlPresets
+            v-if="isCNApiKeyAccount && account.platform !== 'opencode_go'"
+            class="mt-2"
+            :platform="cnPresetPlatform"
+            :mode="editAccountMode"
+            :protocol="editApiProtocol"
+            :current-url="editBaseUrl"
+            @select="onCnPresetSelect"
+          />
         </div>
         <div v-else>
           <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.endpoints') }}</label>
@@ -3193,7 +3188,6 @@ interface TempUnschedRuleForm {
 // State
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
-const showEditBaseUrl = ref(false)
 const editApiKey = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
@@ -3954,7 +3948,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
   // 进入回填窗口：抑制 CN 模式/协议 watcher 联动重置 base_url（见 syncingForm 注释）。
   syncingForm.value = true
-  showEditBaseUrl.value = false
   void nextTick(() => {
     syncingForm.value = false
   })
@@ -4276,22 +4269,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(editOpenCodeAccountMode.value))
       }
     }
-    const platformDefaultUrl =
-      newAccount.platform === 'openai'
-        ? 'https://api.openai.com'
-        : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : newAccount.platform === 'grok'
-            ? 'https://api.x.ai/v1'
-            : newAccount.platform === 'kimi' ||
-                newAccount.platform === 'zhipu' ||
-                newAccount.platform === 'deepseek' ||
-                newAccount.platform === 'opencode_go'
-              ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
-              : 'https://api.anthropic.com'
+    // Base URL 与 api_key 同一存储方式：应答不下发原文（只看 credentials_status.has_base_url），
+    // 输入框保持空白，留空保存即由后端保留原值；旧后端仍回发明文时照常回填。
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions
-      : (credentials.base_url as string) || platformDefaultUrl
+      : typeof credentials.base_url === 'string'
+        ? credentials.base_url
+        : ''
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -5009,13 +4993,22 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
-      const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
       // Always update credentials for apikey type to handle model mapping changes
-      const newCredentials: Record<string, unknown> = {
-        ...currentCredentials,
-        base_url: newBaseUrl
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      // Handle Base URL
+      // 与 api_key 同一存储方式：后端不下发原值（只给 credentials_status.has_base_url），
+      // 留空即"未提供"，由后端按"缺省保留"合并维持原值；旧后端会回发明文，等价于无操作。
+      const hasExistingBaseUrl =
+        props.account.credentials_status?.has_base_url ?? Boolean(currentCredentials.base_url)
+      const newBaseUrl = editBaseUrl.value.trim()
+      if (newBaseUrl) {
+        newCredentials.base_url = newBaseUrl
+      } else if (!hasExistingBaseUrl) {
+        // 从未存过自定义端点的账号：首次保存补平台默认值（与旧行为一致）。
+        newCredentials.base_url = defaultBaseUrl.value
       }
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
