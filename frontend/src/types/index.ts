@@ -2435,6 +2435,24 @@ export interface TotpLogin2FARequest {
 
 // ==================== Scheduled Test Types ====================
 
+export type TimeoutProtectionMode = 'off' | 'shadow' | 'enforce'
+export type ScheduledTestRunMode = 'normal' | 'recovery'
+export type ScheduledTestClassification = 'success' | 'timeout' | 'failure'
+// 失败子类是观察字段：只记录分类，不参与计数、熔断或保护动作。
+export type ScheduledTestFailureKind =
+  | 'auth'
+  | 'rate_limited'
+  | 'upstream'
+  | 'network'
+  | 'business'
+  | 'unknown'
+export type ScheduledTestProtectionAction =
+  | 'none'
+  | 'would_inactivate'
+  | 'inactivated'
+  | 'recovered'
+  | 'blocked'
+
 export interface ScheduledTestPlan {
   id: number
   account_id: number
@@ -2443,6 +2461,14 @@ export interface ScheduledTestPlan {
   enabled: boolean
   max_results: number
   auto_recover: boolean
+  timeout_protection_mode: TimeoutProtectionMode
+  effective_timeout_protection_mode?: TimeoutProtectionMode
+  timeout_protection_override_reason?: string
+  timeout_seconds: number
+  consecutive_timeout_threshold: number
+  retry_delays_seconds: number[]
+  consecutive_timeout_count: number
+  owns_inactive_account: boolean
   last_run_at: string | null
   next_run_at: string | null
   created_at: string
@@ -2452,10 +2478,17 @@ export interface ScheduledTestPlan {
 export interface ScheduledTestResult {
   id: number
   plan_id: number
+  execution_id?: string
   status: string
   response_text: string
   error_message: string
   latency_ms: number
+  run_mode: ScheduledTestRunMode
+  attempt_count: number
+  classification: ScheduledTestClassification
+  failure_kind?: ScheduledTestFailureKind
+  protection_action: ScheduledTestProtectionAction
+  blocked_reason?: string
   started_at: string
   finished_at: string
   created_at: string
@@ -2468,6 +2501,10 @@ export interface CreateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+  timeout_protection_mode?: TimeoutProtectionMode
+  timeout_seconds?: number
+  consecutive_timeout_threshold?: number
+  retry_delays_seconds?: number[]
 }
 
 export interface UpdateScheduledTestPlanRequest {
@@ -2476,6 +2513,10 @@ export interface UpdateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+  timeout_protection_mode?: TimeoutProtectionMode
+  timeout_seconds?: number
+  consecutive_timeout_threshold?: number
+  retry_delays_seconds?: number[]
 }
 
 // Payment types
