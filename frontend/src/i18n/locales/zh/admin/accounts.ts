@@ -719,6 +719,7 @@ export default {
       setupTokenLongLived: 'Setup Token（长期有效）',
       baseUrl: 'Base URL',
       baseUrlHint: '留空使用官方 Anthropic API',
+      baseUrlLeaveEmptyToKeep: '留空则保持当前地址不变',
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
