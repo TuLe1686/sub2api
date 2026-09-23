@@ -1695,5 +1695,36 @@ export default {
       usageError: 'Fetch Error'
     },
 
+    // Accounts [Enhanced]
+    accountsEnhanced: {
+      title: 'Accounts [Enhanced]',
+      description: 'Configure cache rate override and TTFT control per enabled account',
+      activeCount: '{count} active account(s)',
+      noAccounts: 'No active accounts',
+      cacheRate: 'Cache Rate Setting',
+      ttftControl: 'TTFT Control',
+      reduceRange: 'Random reduce range',
+      fixedValueLabel: 'Fixed cache rate',
+      modes: {
+        off: 'Off',
+        randomReduce: 'Random Reduce',
+        fixedValue: 'Fixed Value',
+        ttftRandom: 'Random TTFT (500-3000ms)',
+        ttftProportional: 'Proportional TTFT (10% duration + random)',
+        effortOverride: 'Override',
+        effortFill: 'Fill if absent'
+      },
+      ttftRandomHint: '500ms ~ 3000ms random',
+      ttftProportionalHint: 'total duration × 10% + random 300-1000ms',
+      reasoningEffort: 'Reasoning Effort Enforcement',
+      effortOverrideHint: 'Override: the client value is always replaced by the configured one',
+      effortFillHint: 'Fill if absent: keep an explicit client value, inject only when it is missing',
+      effortModelPlaceholder: 'Model ID (supports * wildcard, e.g. grok-*)',
+      effortHint: 'Reasoning effort is injected after matching the model ID; exact matches win over wildcards, and the most specific wildcard wins',
+      addRule: 'Add rule',
+      removeRule: 'Remove',
+      noRules: 'No rules yet'
+    },
+
     // Scheduled Tests
 }

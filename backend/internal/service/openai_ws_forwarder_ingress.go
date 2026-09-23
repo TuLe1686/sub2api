@@ -262,12 +262,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				nil,
 			)
 		}
-		requestedReasoningEffort := CanonicalRequestedReasoningEffort(normalized, strings.TrimSpace(values[1].String()))
 		if next, policyErr := applyOpenAIWSReasoningEffortPolicy(normalized, hooks); policyErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, policyErr.Error(), policyErr)
 		} else {
 			normalized = next
 		}
+		// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+		// 放在分组策略之后 ⇒ 账号级配置最终生效（账号级优先）。
+		// usage 的 requested effort 与 HTTP 一样记改写后的值。
+		normalized = ApplyEnhancedReasoningEffortForWSFrame(account, normalized)
+		// ── 思考强度注入结束 ──
+		requestedReasoningEffort := CanonicalRequestedReasoningEffort(normalized, strings.TrimSpace(values[1].String()))
 		responsesLite := isOpenAIResponsesLiteWebSocketPayload(normalized)
 		if compatibilityBody, compatibilityChanged, compatibilityErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, account, responsesLite); compatibilityErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", compatibilityErr)
