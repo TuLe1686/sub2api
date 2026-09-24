@@ -696,12 +696,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		firstClientMessage = liteFirstMessage
 	}
-	originalFirstClientMessage := firstClientMessage
 	if next, policyErr := applyOpenAIWSReasoningEffortPolicy(firstClientMessage, hooks); policyErr != nil {
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, policyErr.Error(), policyErr)
 	} else {
 		firstClientMessage = next
 	}
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// 放在分组策略之后 ⇒ 账号级配置最终生效（账号级优先）。
+	firstClientMessage = ApplyEnhancedReasoningEffortForWSFrame(account, firstClientMessage)
+	// ── 思考强度注入结束 ──
 	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
 	requestPreviousResponseID := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "previous_response_id").String())
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
@@ -807,7 +810,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
 	usageMeta.initFromFirstFrame(firstClientMessage, capturedSessionModel)
-	usageMeta.captureRequestedReasoningEffort(originalFirstClientMessage, capturedSessionModel)
+	// 与 HTTP 一致，requested effort 记注入后的出站帧。
+	usageMeta.captureRequestedReasoningEffort(firstClientMessage, capturedSessionModel)
 	_, initialUpstreamModel := usageMeta.turnModels(initialRequestModel)
 	SetOpsUpstreamModel(c, initialUpstreamModel)
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -1033,13 +1037,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					}
 					payload = litePayload
 				}
-				originalResponseCreate := payload
 				if next, policyErr := applyOpenAIWSReasoningEffortPolicy(payload, hooks); policyErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, policyErr.Error(), policyErr)
 				} else {
 					payload = next
 				}
-				usageMeta.captureRequestedReasoningEffort(originalResponseCreate)
+				// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+				payload = ApplyEnhancedReasoningEffortForWSFrame(account, payload)
+				// ── 思考强度注入结束 ──
+				usageMeta.captureRequestedReasoningEffort(payload)
 			}
 			turnNo := int(completedTurns.Load()) + 1
 			if turnNo < 2 {
