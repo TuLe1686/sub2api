@@ -688,6 +688,87 @@ func TestOpenAIGatewayService_Forward_WSv2FallbackWhenResponseAlreadyWrittenRetu
 	require.Nil(t, upstream.lastReq, "已写下游响应时，不应再回退 HTTP")
 }
 
+func TestOpenAIGatewayService_Forward_WSv2StreamTTFTStartsAtReasoningWithoutEarlyFlush(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket failed: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		var req map[string]any
+		if err := conn.ReadJSON(&req); err != nil {
+			t.Errorf("read ws request failed: %v", err)
+			return
+		}
+		_ = conn.WriteJSON(map[string]any{
+			"type":     "response.created",
+			"response": map[string]any{"id": "resp_ws_ttft", "model": "gpt-5.3-codex"},
+		})
+		time.Sleep(120 * time.Millisecond)
+		_ = conn.WriteJSON(map[string]any{
+			"type": "response.output_item.added",
+			"item": map[string]any{"id": "item_reasoning", "type": "reasoning", "summary": []any{}},
+		})
+		time.Sleep(900 * time.Millisecond)
+		_ = conn.WriteJSON(map[string]any{
+			"type":  "response.output_text.delta",
+			"delta": "ok",
+		})
+		_ = conn.WriteJSON(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id": "resp_ws_ttft", "model": "gpt-5.3-codex",
+				"usage": map[string]any{"input_tokens": 2, "output_tokens": 1},
+			},
+		})
+	}))
+	defer wsServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+	account := &Account{
+		ID: 87, Name: "openai-apikey", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": wsServer.URL},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+
+	body := []byte(`{"model":"gpt-5.3-codex","stream":true,"input":[{"type":"input_text","text":"hello"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.FirstTokenMs)
+	require.GreaterOrEqual(t, *result.FirstTokenMs, 100)
+	require.Less(t, *result.FirstTokenMs, 800)
+
+	stream := rec.Body.String()
+	require.Contains(t, stream, `"type":"response.created"`)
+	require.Contains(t, stream, `"type":"response.output_item.added"`)
+	require.Contains(t, stream, `"type":"response.output_text.delta"`)
+	require.Less(t, strings.Index(stream, `"type":"response.output_item.added"`), strings.Index(stream, `"type":"response.output_text.delta"`))
+}
+
 func TestOpenAIGatewayService_Forward_WSv2StreamEarlyCloseFallbackHTTP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -708,18 +789,30 @@ func TestOpenAIGatewayService_Forward_WSv2StreamEarlyCloseFallbackHTTP(t *testin
 			return
 		}
 
-		// 仅发送 response.created（非 token 事件）后立即关闭，
-		// 模拟线上“上游早期内部错误断连”的场景。
+		// 发送首字统计会识别的 reasoning 进度后立即关闭。该帧仍应保持缓冲，
+		// 不能因为 TTFT 已记录就向下游泄漏半截流。
 		if err := conn.WriteJSON(map[string]any{
 			"type": "response.created",
 			"response": map[string]any{
-				"id":    "resp_ws_created_only",
+				"id":    "resp_ws_reasoning_only",
 				"model": "gpt-5.3-codex",
 			},
 		}); err != nil {
 			t.Errorf("write response.created failed: %v", err)
 			return
 		}
+		if err := conn.WriteJSON(map[string]any{
+			"type": "response.output_item.added",
+			"item": map[string]any{
+				"id":      "item_reasoning",
+				"type":    "reasoning",
+				"summary": []any{},
+			},
+		}); err != nil {
+			t.Errorf("write reasoning item failed: %v", err)
+			return
+		}
+
 		closePayload := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "")
 		_ = conn.WriteControl(websocket.CloseMessage, closePayload, time.Now().Add(time.Second))
 	}))
