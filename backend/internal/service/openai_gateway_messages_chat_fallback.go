@@ -12,6 +12,7 @@ import (
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/MACOS-DO/sub4api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -92,6 +93,17 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	// Use the final outbound value for usage logs and billing.
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(chatBody, upstreamModel, billingModel, originalModel)
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, chatBody, upstreamModel)
+
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// 形态为 Chat Completions（键 reasoning_effort）；显式性判定同样回看
+	// 原始 Anthropic 请求，避免把桥接合成的默认值当成客户端意图。
+	if injectedBody, injected := ApplyEnhancedReasoningEffortForAnthropicEntry(account, chatBody, body, false); injected {
+		chatBody = injectedBody
+		if effectiveEffort := strings.TrimSpace(gjson.GetBytes(chatBody, "reasoning_effort").String()); effectiveEffort != "" {
+			reasoningEffort = &effectiveEffort
+		}
+	}
+	// ── 思考强度注入结束 ──
 	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
 	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,
 	// so the converted Chat Completions body never contains one and the policy
