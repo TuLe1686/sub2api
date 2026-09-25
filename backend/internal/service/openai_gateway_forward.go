@@ -150,6 +150,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		setOpenAIResponsesClientToolMapping(c, mapping)
 	}
 
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// 注入点选在 body 基本定型之后、grok 分流之前：
+	//   - grok 对 composer 系列"不支持则剥离"由其内部 sanitize 处理，这里无需复刻判定；
+	//   - 后续 requestView、计费口径抽取与 WS payload 都能看到注入后的值；
+	//   - 位于分组策略（handler 层）之后，故账号级配置最终生效（账号级优先）。
+	body = ApplyEnhancedReasoningEffortForAccount(account, body, true)
+	// ── 思考强度注入结束 ──
+
 	originalBody := body
 	rememberOpenCodeInboundBody(c, originalBody)
 	requestView := newOpenAIRequestView(body)
