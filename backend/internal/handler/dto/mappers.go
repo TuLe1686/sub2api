@@ -236,6 +236,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		return nil
 	}
 	redactedCreds, credsStatus := RedactCredentials(a.Credentials)
+	// API Key 账号的上游端点与 api_key 同一存储方式：不下发原文，只报 has_base_url 存在性。
+	redactedCreds, credsStatus = RedactWriteOnlyCredentials(a.Type, redactedCreds, credsStatus)
 	extra := redactAccountManagedExtra(a.Extra)
 	var ollamaCloudUsage *service.OllamaCloudUsageState
 	if state := service.OllamaCloudUsageStateFromAccount(a); state.Eligible {

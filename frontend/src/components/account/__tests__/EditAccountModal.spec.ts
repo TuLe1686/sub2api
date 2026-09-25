@@ -330,6 +330,56 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('never echoes a stored API Key Base URL and keeps the field masked', async () => {
+    // 后端脱敏：credentials 里没有 base_url，只有 credentials_status.has_base_url。
+    const account = buildAccount()
+    account.credentials = { model_mapping: { 'gpt-5.2': 'gpt-5.2' } }
+    account.credentials_status = { has_api_key: true, has_base_url: true }
+
+    const wrapper = mountModal(account)
+
+    const input = wrapper.get('input[placeholder="https://api.openai.com"]')
+    expect(input.attributes('type')).toBe('password')
+    expect((input.element as HTMLInputElement).value).toBe('')
+    // 与 API Key 同一存储方式：不再提供"展开"入口
+    expect(wrapper.find('[data-testid="edit-base-url-toggle"]').exists()).toBe(false)
+  })
+
+  it('keeps the stored API Key Base URL when the operator leaves the field empty', async () => {
+    const account = buildAccount()
+    account.credentials = { model_mapping: { 'gpt-5.2': 'gpt-5.2' } }
+    account.credentials_status = { has_api_key: true, has_base_url: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    // 留空即"未提供"，payload 不带 base_url，由后端合并保留原值
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('base_url')
+  })
+
+  it('submits a newly typed API Key Base URL', async () => {
+    const account = buildAccount()
+    account.credentials_status = { has_api_key: true, has_base_url: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('input[placeholder="https://api.openai.com"]').setValue('https://relay.example.com/v1')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.base_url).toBe('https://relay.example.com/v1')
+  })
+
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2028-02-29T12:34:00'))
@@ -1043,8 +1093,8 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    expect((wrapper.get('input[placeholder="https://api.x.ai/v1"]').element as HTMLInputElement).value)
-      .toBe('https://api.x.ai/v1')
+    // 没有存过端点（credentials_status 里没有 has_base_url）时输入框为空，占位符给出官方地址
+    expect((wrapper.get('input[placeholder="https://api.x.ai/v1"]').element as HTMLInputElement).value).toBe('')
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
