@@ -61,6 +61,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		body = normalized
 	}
 
+	// ── 账号增强控制：思考强度强制注入（account-enhanced-control 补丁）──
+	// 直通路径不经 Responses 转换，必须写 Claude 的 output_config.effort。
+	// 放在计费提取之前，usage 与出站 body 看到的是改写后的值。
+	body = ApplyEnhancedReasoningEffortForNativeAnthropic(account, body)
+	// ── 思考强度注入结束 ──
+
 	// 记录客户端请求的推理强度：优先 Claude 协议的 output_config.effort；
 	// 缺失且 thinking 已启用时，按国产 passback-required 模型兜底为 high
 	// （对齐 Anthropic 网关 gateway_handler 的记录语义，避免该路径长期落 NULL）。
