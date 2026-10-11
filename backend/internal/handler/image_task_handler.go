@@ -14,6 +14,7 @@ import (
 	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 	pkghttputil "github.com/MACOS-DO/sub4api/internal/pkg/httputil"
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/requestmemory"
 	middleware2 "github.com/MACOS-DO/sub4api/internal/server/middleware"
 	"github.com/MACOS-DO/sub4api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -104,6 +105,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
 	if err != nil {
 		cancel()
+		releaseAsyncImageMemory(taskCtx)
 		imageTaskError(c, err)
 		return
 	}
@@ -222,6 +224,7 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 
 func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
 	defer cancel()
+	defer releaseAsyncImageMemory(taskCtx)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
@@ -258,18 +261,29 @@ func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json
 	}
 }
 
+const asyncImageMemoryReleaseKey = "async_image_memory_release"
+
+func releaseAsyncImageMemory(c *gin.Context) {
+	if release, ok := c.Get(asyncImageMemoryReleaseKey); ok {
+		if fn, ok := release.(func()); ok {
+			fn()
+		}
+	}
+}
+
 func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
 	base := context.WithoutCancel(c.Request.Context())
 	executionCtx, cancel := context.WithTimeout(base, timeoutDuration)
 	request := c.Request.Clone(executionCtx)
-	request.Body = io.NopCloser(bytes.NewReader(body))
+	request.Body = pkghttputil.NewPrereadBody(body)
 	request.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(body)), nil
+		return pkghttputil.NewPrereadBody(body), nil
 	}
 	request.ContentLength = int64(len(body))
 	request.URL.Path = strings.TrimSuffix(request.URL.Path, "/async")
 
 	taskCtx := c.Copy()
+	taskCtx.Set(asyncImageMemoryReleaseKey, requestmemory.FromContext(c.Request.Context()).Retain())
 	recorder := httptest.NewRecorder()
 	recorderCtx, _ := gin.CreateTestContext(recorder)
 	taskCtx.Writer = recorderCtx.Writer
