@@ -139,16 +139,16 @@ func requestMemoryGuardError(c *gin.Context, status int, message string) {
 	}
 }
 
-// image-compress 补丁：>40MiB 的 body 会走"读取 → 内联图片压缩 → 下游重写"管道
+// image-compress 补丁：>40MiB 的 body 走"读取 → 内联图片压缩 → 下游重写"管道
 // （见 service/openai_responses_image_compress.go 与 builder runs/20261013-image-compress），
-// 预扣从一刀切 6×CL 改为分段：小 body 保持 6×CL 不变，重 body 用 2×CL + 192MiB
-// （输入缓冲 1× + 重建输出 ≤1× + 单图解码工作集 ≤max_pixels×4B + 下游小 body 重写；
-// 系数由隔离演练标定）。旧公式在重 body 上过于保守（85.3MiB 即拒收），
-// 而压缩管道对命中压缩的大请求实际内存远低于 6×CL。
+// 预扣从一刀切 6×CL 改为分段：小 body 保持 6×CL 不变；重 body 用 2×CL + 312MiB，
+// 准入上限封在 100MiB——与读取链路的计费上限（httputil 大体积权重 2×：
+// 分块~2×+拼装 1×+解析 2× = 5×CL，512MiB/5 ≈ 102MiB）配套，保证准入的请求
+// 一定读得完（不会出现"放进来、读到一半 503"）。系数由 hk 隔离演练标定。
 const (
 	requestMemoryGuardHeavyBodyThresholdBytes = 40 << 20
 	requestMemoryGuardHeavyBodyMultiplier     = 2
-	requestMemoryGuardHeavyBodyFixedBytes     = 192 << 20
+	requestMemoryGuardHeavyBodyFixedBytes     = 312 << 20
 )
 
 // requestMemoryGuardInitialBytes 计算单请求内存预扣；ok=false 表示不可能入账（拒绝）。

@@ -136,12 +136,16 @@ func TestRequestMemoryGuardInitialBytesPiecewise(t *testing.T) {
 	if got, ok := requestMemoryGuardInitialBytes(boundary); !ok || got != 6*boundary+4096 {
 		t.Fatalf("boundary 40MiB must stay legacy: (%d,%v)", got, ok)
 	}
-	if got, ok := requestMemoryGuardInitialBytes(boundary + 1); !ok || got != 2*(boundary+1)+(192<<20) {
+	if got, ok := requestMemoryGuardInitialBytes(boundary + 1); !ok || got != 2*(boundary+1)+(312<<20) {
 		t.Fatalf("40MiB+1 must switch to heavy formula: (%d,%v)", got, ok)
 	}
 	heavy := int64(41 << 20)
-	if got, ok := requestMemoryGuardInitialBytes(heavy); !ok || got != 2*heavy+(192<<20) {
+	if got, ok := requestMemoryGuardInitialBytes(heavy); !ok || got != 2*heavy+(312<<20) {
 		t.Fatalf("heavy body formula mismatch: (%d,%v)", got, ok)
+	}
+	// 准入上限：2×CL+312MiB ≤ 512MiB → CL ≤ 100MiB（与读取计费上限配套，见 patch 注释）。
+	if _, ok := requestMemoryGuardInitialBytes(int64(100 << 20)); !ok {
+		t.Fatal("100MiB must still be admissible")
 	}
 	if _, ok := requestMemoryGuardInitialBytes(math.MaxInt64); ok {
 		t.Fatal("overflow must be rejected")
