@@ -110,3 +110,16 @@ func TestOversizeDoesNotWaitAndChargeOverflowDoesNotWrap(t *testing.T) {
 		t.Fatalf("failed charge changed reservation: %+v", s)
 	}
 }
+
+// image-compress 补丁：解析计费权重按体积分段（>40MiB 用 2×，≤40MiB 维持 4×）。
+func TestParserWeightForBodySize(t *testing.T) {
+	if got := requestmemory.ParserWeightForBodySize(40 << 20); got != requestmemory.ParserWeight {
+		t.Fatalf("boundary 40MiB must keep parser weight: %d", got)
+	}
+	if got := requestmemory.ParserWeightForBodySize((40 << 20) + 1); got != requestmemory.LargeBodyParserWeight {
+		t.Fatalf("large body must use reduced weight: %d", got)
+	}
+	if got := requestmemory.ParserWeightForBodySize(1 << 10); got != requestmemory.ParserWeight {
+		t.Fatalf("small body must keep parser weight: %d", got)
+	}
+}

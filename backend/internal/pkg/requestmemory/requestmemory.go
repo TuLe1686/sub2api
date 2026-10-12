@@ -13,6 +13,25 @@ var ErrCapacity = errors.New("request memory budget exhausted")
 
 const ParserWeight int64 = 4
 
+// image-compress 补丁的标定（builder runs/20261013-image-compress）：
+// 读取链路对单个请求的累计计费 ≈ 分块缓冲（~2×size）+ 拼装（size）+ 解析权重×size，
+// 三者共用同一只预算。原 4× 权重 + 512MiB 预算把读取上限压在 ~73MiB——85MB+ 的
+// 全量重发会话在被拒之前也会因读取计费失败（同一条 503）。压缩管道下大请求
+// 读后即缩小，解析工作集远低于 4×；对 >40MiB 的 body 用 2× 权重，
+// 使 512MiB 预算下的真实读取上限抬到 ~110MiB（准入上限由守卫公式另行封在 100MiB）。
+const (
+	LargeBodyThresholdBytes int64 = 40 << 20
+	LargeBodyParserWeight   int64 = 2
+)
+
+// ParserWeightForBodySize 返回按体积分段的解析计费权重（≤40MiB 维持 4× 不变）。
+func ParserWeightForBodySize(size int64) int64 {
+	if size > LargeBodyThresholdBytes {
+		return LargeBodyParserWeight
+	}
+	return ParserWeight
+}
+
 type Snapshot struct {
 	UsedBytes   int64
 	BudgetBytes int64
