@@ -1009,6 +1009,31 @@ func (c GatewayRequestMemoryGuardConfig) Validate() error {
 	return nil
 }
 
+// GatewayRequestImageCompressConfig 控制超阈值 Responses 请求的内联图片压缩
+// （image-compress 补丁）：body > trigger_bytes 且 api_key 所属分组在 group_ids
+// 白名单时，对 base64 内联图片做降采样（长边 max_dimension）+ JPEG 重编码
+// （jpeg_quality），把全量重发的病态会话体量压回正常范围。未命中门控时零开销。
+type GatewayRequestImageCompressConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	GroupIDs      string `mapstructure:"group_ids"`
+	TriggerBytes  int64  `mapstructure:"trigger_bytes"`
+	MaxDimension  int    `mapstructure:"max_dimension"`
+	JPEGQuality   int    `mapstructure:"jpeg_quality"`
+	MinImageBytes int64  `mapstructure:"min_image_bytes"`
+	MaxPixels     int64  `mapstructure:"max_pixels"`
+}
+
+func (c GatewayRequestImageCompressConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.TriggerBytes <= 0 || c.MaxDimension < 64 || c.MaxDimension > 8192 ||
+		c.JPEGQuality < 1 || c.JPEGQuality > 100 || c.MinImageBytes < 0 || c.MaxPixels <= 0 {
+		return fmt.Errorf("invalid gateway.request_image_compress configuration")
+	}
+	return nil
+}
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -1030,6 +1055,8 @@ type GatewayConfig struct {
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
 	TextMaxBodySize    int64                           `mapstructure:"text_max_body_size"`
 	RequestMemoryGuard GatewayRequestMemoryGuardConfig `mapstructure:"request_memory_guard"`
+	// RequestImageCompress: 超阈值 Responses 内联图片压缩（image-compress 补丁）
+	RequestImageCompress GatewayRequestImageCompressConfig `mapstructure:"request_image_compress"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 上游模型列表响应体读取上限（字节）
@@ -2603,6 +2630,13 @@ func setDefaults() {
 	viper.SetDefault("gateway.request_memory_guard.wait_timeout_ms", 250)
 	viper.SetDefault("gateway.request_memory_guard.max_waiting", 32)
 	viper.SetDefault("gateway.request_memory_guard.read_timeout_seconds", 60)
+	viper.SetDefault("gateway.request_image_compress.enabled", false)
+	viper.SetDefault("gateway.request_image_compress.group_ids", "")
+	viper.SetDefault("gateway.request_image_compress.trigger_bytes", int64(40<<20))
+	viper.SetDefault("gateway.request_image_compress.max_dimension", 1280)
+	viper.SetDefault("gateway.request_image_compress.jpeg_quality", 82)
+	viper.SetDefault("gateway.request_image_compress.min_image_bytes", int64(256<<10))
+	viper.SetDefault("gateway.request_image_compress.max_pixels", int64(24_000_000))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
@@ -3445,6 +3479,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("idempotency.cleanup_batch_size must be positive")
 	}
 	if err := c.Gateway.RequestMemoryGuard.Validate(); err != nil {
+		return err
+	}
+	if err := c.Gateway.RequestImageCompress.Validate(); err != nil {
 		return err
 	}
 	if c.Gateway.MaxBodySize <= 0 {

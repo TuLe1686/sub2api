@@ -43,13 +43,10 @@ func requestMemoryGuardWithManager(cfg config.GatewayRequestMemoryGuardConfig, m
 			requestMemoryGuardError(c, 503, "Request memory guard is unavailable")
 			return
 		}
-		initial := int64(576)
-		if req.ContentLength > 0 {
-			if req.ContentLength > (math.MaxInt64-4096)/6 {
-				requestMemoryGuardError(c, 503, "Request memory budget exhausted")
-				return
-			}
-			initial = 6*req.ContentLength + 4096
+		initial, ok := requestMemoryGuardInitialBytes(req.ContentLength)
+		if !ok {
+			requestMemoryGuardError(c, 503, "Request memory budget exhausted")
+			return
 		}
 		lease, err := m.Acquire(req.Context(), initial)
 		if err != nil {
@@ -140,4 +137,33 @@ func requestMemoryGuardError(c *gin.Context, status int, message string) {
 	default:
 		c.AbortWithStatusJSON(status, gin.H{"error": gin.H{"type": errorType, "code": code, "message": message}})
 	}
+}
+
+// image-compress 补丁：>40MiB 的 body 会走"读取 → 内联图片压缩 → 下游重写"管道
+// （见 service/openai_responses_image_compress.go 与 builder runs/20261013-image-compress），
+// 预扣从一刀切 6×CL 改为分段：小 body 保持 6×CL 不变，重 body 用 2×CL + 192MiB
+// （输入缓冲 1× + 重建输出 ≤1× + 单图解码工作集 ≤max_pixels×4B + 下游小 body 重写；
+// 系数由隔离演练标定）。旧公式在重 body 上过于保守（85.3MiB 即拒收），
+// 而压缩管道对命中压缩的大请求实际内存远低于 6×CL。
+const (
+	requestMemoryGuardHeavyBodyThresholdBytes = 40 << 20
+	requestMemoryGuardHeavyBodyMultiplier     = 2
+	requestMemoryGuardHeavyBodyFixedBytes     = 192 << 20
+)
+
+// requestMemoryGuardInitialBytes 计算单请求内存预扣；ok=false 表示不可能入账（拒绝）。
+func requestMemoryGuardInitialBytes(contentLength int64) (int64, bool) {
+	if contentLength <= 0 {
+		return 576, true
+	}
+	if contentLength > requestMemoryGuardHeavyBodyThresholdBytes {
+		if contentLength > (math.MaxInt64-requestMemoryGuardHeavyBodyFixedBytes)/requestMemoryGuardHeavyBodyMultiplier {
+			return 0, false
+		}
+		return requestMemoryGuardHeavyBodyMultiplier*contentLength + requestMemoryGuardHeavyBodyFixedBytes, true
+	}
+	if contentLength > (math.MaxInt64-4096)/6 {
+		return 0, false
+	}
+	return 6*contentLength + 4096, true
 }
