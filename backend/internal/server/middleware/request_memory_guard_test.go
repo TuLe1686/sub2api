@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"net"
 	"net/http/httptest"
 	"strings"
@@ -120,5 +121,29 @@ func TestRequestMemoryGuardHTTP1SlowBodyDeadlineAndRelease(t *testing.T) {
 	}
 	if m.Snapshot().UsedBytes != 0 {
 		t.Fatal("timed out reader leaked")
+	}
+}
+
+// image-compress 补丁：预扣分段（≤40MiB 维持 6×CL；>40MiB 换 2×CL+192MiB）。
+func TestRequestMemoryGuardInitialBytesPiecewise(t *testing.T) {
+	if got, ok := requestMemoryGuardInitialBytes(0); !ok || got != 576 {
+		t.Fatalf("unknown length must reserve 576: (%d,%v)", got, ok)
+	}
+	if got, ok := requestMemoryGuardInitialBytes(1 << 20); !ok || got != int64(6*(1<<20)+4096) {
+		t.Fatalf("small body must keep legacy formula: (%d,%v)", got, ok)
+	}
+	boundary := int64(40 << 20)
+	if got, ok := requestMemoryGuardInitialBytes(boundary); !ok || got != 6*boundary+4096 {
+		t.Fatalf("boundary 40MiB must stay legacy: (%d,%v)", got, ok)
+	}
+	if got, ok := requestMemoryGuardInitialBytes(boundary + 1); !ok || got != 2*(boundary+1)+(192<<20) {
+		t.Fatalf("40MiB+1 must switch to heavy formula: (%d,%v)", got, ok)
+	}
+	heavy := int64(41 << 20)
+	if got, ok := requestMemoryGuardInitialBytes(heavy); !ok || got != 2*heavy+(192<<20) {
+		t.Fatalf("heavy body formula mismatch: (%d,%v)", got, ok)
+	}
+	if _, ok := requestMemoryGuardInitialBytes(math.MaxInt64); ok {
+		t.Fatal("overflow must be rejected")
 	}
 }
