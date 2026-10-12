@@ -1044,6 +1044,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	httpInvalidEncryptedContentRetryTried := false
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
+	// ── Responses 缓存亲和注入（prompt-cache-affinity 补丁）──
+	// 位置：body 定型之后、重试循环之前——循环内所有 attempt 共用同一份注入结果；
+	// 上游把该字段当未知参数拒绝时，由 rejectedFieldRetry 删除后重试（见
+	// openai_responses_rejected_field_retry.go 的 prompt_cache_key 分支）。
+	if injectedBody, injected := s.injectResponsesPromptCacheAffinity(c, account, body); injected {
+		body = injectedBody
+	}
+	// ── 注入结束 ──
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
 		// Build upstream request
