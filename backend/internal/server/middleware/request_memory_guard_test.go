@@ -143,9 +143,12 @@ func TestRequestMemoryGuardInitialBytesPiecewise(t *testing.T) {
 	if got, ok := requestMemoryGuardInitialBytes(heavy); !ok || got != 2*heavy+(312<<20) {
 		t.Fatalf("heavy body formula mismatch: (%d,%v)", got, ok)
 	}
-	// 准入上限：2×CL+312MiB ≤ 512MiB → CL ≤ 100MiB（与读取计费上限配套，见 patch 注释）。
+	// 准入硬上限（rev 3，与预算解耦）：恰好 100MiB 可入，101MiB 无论预算多大都拒。
 	if _, ok := requestMemoryGuardInitialBytes(int64(100 << 20)); !ok {
 		t.Fatal("100MiB must still be admissible")
+	}
+	if _, ok := requestMemoryGuardInitialBytes(int64(101 << 20)); ok {
+		t.Fatal("101MiB must be rejected by hard cap regardless of budget")
 	}
 	if _, ok := requestMemoryGuardInitialBytes(math.MaxInt64); ok {
 		t.Fatal("overflow must be rejected")

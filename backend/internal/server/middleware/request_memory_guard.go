@@ -141,14 +141,23 @@ func requestMemoryGuardError(c *gin.Context, status int, message string) {
 
 // image-compress 补丁：>40MiB 的 body 走"读取 → 内联图片压缩 → 下游重写"管道
 // （见 service/openai_responses_image_compress.go 与 builder runs/20261013-image-compress），
-// 预扣从一刀切 6×CL 改为分段：小 body 保持 6×CL 不变；重 body 用 2×CL + 312MiB，
-// 准入上限封在 100MiB——与读取链路的计费上限（httputil 大体积权重 2×：
-// 分块~2×+拼装 1×+解析 2× = 5×CL，512MiB/5 ≈ 102MiB）配套，保证准入的请求
-// 一定读得完（不会出现"放进来、读到一半 503"）。系数由 hk 隔离演练标定。
+// 预扣从一刀切 6×CL 改为分段：小 body 保持 6×CL 不变；重 body 用 2×CL + 312MiB。
+//
+// 单请求准入硬上限 requestMemoryGuardHeavyBodyMaxBytes = 100MiB（rev 3：与预算解耦）：
+//   - 与读取链路计费（httputil 大体积权重 2×：分块~2×+拼装 1×+解析 2× ≈ 5×CL，
+//     512MiB/5 ≈ 102MiB）配套，保证准入的请求一定读得完（不会"放进来、读到一半 503"）；
+//   - 预算（BUDGET_BYTES）可单独抬高以允许两个常规重型请求并存——2026-10-13 事故：
+//     512MiB 预算下重型请求互斥，第二个等待 2 秒即 503（客户 yhb 被金丝雀挤掉 22 连拒）。
+//     预算抬到 896MiB 后两个 ~50MiB 重型（预扣 2×412MiB）可并存；
+//     **单请求上限不随预算漂移**：两个 100MiB 满配（2×512MiB=1024 > 896）仍被预算挡住。
+//
+// 系数由 hk 隔离演练标定。
 const (
 	requestMemoryGuardHeavyBodyThresholdBytes = 40 << 20
 	requestMemoryGuardHeavyBodyMultiplier     = 2
 	requestMemoryGuardHeavyBodyFixedBytes     = 312 << 20
+	// requestMemoryGuardHeavyBodyMaxBytes：重体请求单请求硬上限（独立于预算）。
+	requestMemoryGuardHeavyBodyMaxBytes = 100 << 20
 )
 
 // requestMemoryGuardInitialBytes 计算单请求内存预扣；ok=false 表示不可能入账（拒绝）。
@@ -157,6 +166,9 @@ func requestMemoryGuardInitialBytes(contentLength int64) (int64, bool) {
 		return 576, true
 	}
 	if contentLength > requestMemoryGuardHeavyBodyThresholdBytes {
+		if contentLength > requestMemoryGuardHeavyBodyMaxBytes {
+			return 0, false
+		}
 		if contentLength > (math.MaxInt64-requestMemoryGuardHeavyBodyFixedBytes)/requestMemoryGuardHeavyBodyMultiplier {
 			return 0, false
 		}
