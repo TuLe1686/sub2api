@@ -1021,6 +1021,8 @@ type GatewayRequestImageCompressConfig struct {
 	JPEGQuality   int    `mapstructure:"jpeg_quality"`
 	MinImageBytes int64  `mapstructure:"min_image_bytes"`
 	MaxPixels     int64  `mapstructure:"max_pixels"`
+	// CacheBytes: 压缩结果的内容寻址缓存预算（rev 2）；0 = 关闭缓存。
+	CacheBytes int64 `mapstructure:"cache_bytes"`
 }
 
 func (c GatewayRequestImageCompressConfig) Validate() error {
@@ -1028,7 +1030,8 @@ func (c GatewayRequestImageCompressConfig) Validate() error {
 		return nil
 	}
 	if c.TriggerBytes <= 0 || c.MaxDimension < 64 || c.MaxDimension > 8192 ||
-		c.JPEGQuality < 1 || c.JPEGQuality > 100 || c.MinImageBytes < 0 || c.MaxPixels <= 0 {
+		c.JPEGQuality < 1 || c.JPEGQuality > 100 || c.MinImageBytes < 0 || c.MaxPixels <= 0 ||
+		c.CacheBytes < 0 {
 		return fmt.Errorf("invalid gateway.request_image_compress configuration")
 	}
 	return nil
@@ -2637,6 +2640,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.request_image_compress.jpeg_quality", 82)
 	viper.SetDefault("gateway.request_image_compress.min_image_bytes", int64(256<<10))
 	viper.SetDefault("gateway.request_image_compress.max_pixels", int64(24_000_000))
+	viper.SetDefault("gateway.request_image_compress.cache_bytes", int64(96<<20))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
