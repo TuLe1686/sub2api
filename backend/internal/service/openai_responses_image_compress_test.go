@@ -267,3 +267,75 @@ func TestImageCompressGroupAllowed(t *testing.T) {
 	require.False(t, imageCompressGroupAllowed("", 10))
 	require.False(t, imageCompressGroupAllowed("10", 0))
 }
+
+func imageCompressTestCache(cfg config.GatewayRequestImageCompressConfig) *imageCompressCache {
+	return newImageCompressCache(64<<20, imageCompressFingerprint(cfg))
+}
+
+func imageCompressTestConfigView(cfg config.GatewayRequestImageCompressConfig) config.GatewayRequestImageCompressConfig {
+	return config.GatewayRequestImageCompressConfig{
+		MaxDimension: cfg.MaxDimension, JPEGQuality: cfg.JPEGQuality,
+		MinImageBytes: cfg.MinImageBytes, MaxPixels: cfg.MaxPixels,
+	}
+}
+
+func TestCompressInlineImages_CacheHitsSkipRecompression(t *testing.T) {
+	cfg := imageCompressTestConfig()
+	params := imageCompressTestParams(cfg)
+	params.Cache = imageCompressTestCache(imageCompressTestConfigView(cfg))
+	body := imageCompressTestBody(t, []string{
+		imageCompressTestDataURL(t, imageCompressTestPNG(t, 300, 200), "png"),
+		imageCompressTestDataURL(t, imageCompressTestPNG(t, 320, 240), "png"),
+	})
+
+	out1, stats1, changed1 := compressInlineImages(body, params)
+	require.True(t, changed1)
+	require.Equal(t, 2, stats1.Compressed)
+	require.Equal(t, 0, stats1.CacheHits)
+
+	out2, stats2, changed2 := compressInlineImages(body, params)
+	require.True(t, changed2)
+	// 命中路径同样计入 Compressed（语义=被替换张数）；零重压的信号是 CacheHits 全覆盖。
+	require.Equal(t, 2, stats2.CacheHits, "第二轮应全部走缓存")
+	require.Equal(t, stats1.Compressed, stats2.Compressed)
+	require.True(t, bytes.Equal(out1, out2), "缓存命中输出必须与首轮逐字节一致")
+}
+
+func TestCompressInlineImages_NegativeCacheForKeptImages(t *testing.T) {
+	cfg := imageCompressTestConfig()
+	cfg.MinImageBytes = 1 << 20 // 小图必被保留 → 负结果
+	params := imageCompressTestParams(cfg)
+	params.Cache = imageCompressTestCache(imageCompressTestConfigView(cfg))
+	body := imageCompressTestBody(t, []string{
+		imageCompressTestDataURL(t, imageCompressTestPNG(t, 64, 64), "png"),
+	})
+
+	_, stats1, changed1 := compressInlineImages(body, params)
+	require.False(t, changed1)
+	require.Equal(t, 1, stats1.Skipped)
+	require.Equal(t, 0, stats1.CacheHits)
+
+	_, stats2, _ := compressInlineImages(body, params)
+	require.Equal(t, 1, stats2.CacheHits, "保留决策应命中负结果缓存")
+	require.Equal(t, 1, stats2.Skipped)
+}
+
+func TestImageCompressCache_LRUAndBudget(t *testing.T) {
+	cache := newImageCompressCache(1000, "fp")
+	cache.put("a", bytes.Repeat([]byte{1}, 600))
+	cache.put("b", bytes.Repeat([]byte{2}, 600))
+	if _, ok := cache.get("a"); ok {
+		t.Fatal("超预算应淘汰最久未用条目")
+	}
+	if value, ok := cache.get("b"); !ok || len(value) != 600 {
+		t.Fatalf("最近条目应保留: ok=%v len=%d", ok, len(value))
+	}
+	cache.put("neg", nil)
+	if value, ok := cache.get("neg"); !ok || value != nil {
+		t.Fatal("负结果命中语义错误")
+	}
+	cache.put("oversize", bytes.Repeat([]byte{3}, 2000))
+	if _, ok := cache.get("oversize"); ok {
+		t.Fatal("单条超预算不应入缓存")
+	}
+}

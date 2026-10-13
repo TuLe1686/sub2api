@@ -47,6 +47,7 @@ type inlineImageCompressStats struct {
 	Total      int
 	Compressed int
 	Skipped    int
+	CacheHits  int
 }
 
 type imageCompressParams struct {
@@ -54,6 +55,8 @@ type imageCompressParams struct {
 	JPEGQuality   int
 	MinImageBytes int64
 	MaxPixels     int64
+	// Cache 可空：非空时按（原始 data URL + 参数指纹）内容寻址复用压缩结果（rev 2）。
+	Cache *imageCompressCache
 }
 
 var imageDataURLStringPrefix = []byte(`"data:image/`)
@@ -86,6 +89,7 @@ func (s *OpenAIGatewayService) compressResponsesInlineImages(c *gin.Context, bod
 		JPEGQuality:   cfg.JPEGQuality,
 		MinImageBytes: cfg.MinImageBytes,
 		MaxPixels:     cfg.MaxPixels,
+		Cache:         imageCompressCacheFor(cfg),
 	}
 	originalLen := len(body)
 	next, stats, changed := compressInlineImages(body, params)
@@ -93,8 +97,8 @@ func (s *OpenAIGatewayService) compressResponsesInlineImages(c *gin.Context, bod
 		return body, false
 	}
 	logger.LegacyPrintf("service.openai_gateway",
-		"[OpenAI] 已压缩 Responses 内联图片（分组 %d：压缩 %d/%d 张，body %d → %d 字节）",
-		groupID, stats.Compressed, stats.Total, originalLen, len(next))
+		"[OpenAI] 已压缩 Responses 内联图片（分组 %d：压缩 %d/%d 张，缓存命中 %d，body %d → %d 字节）",
+		groupID, stats.Compressed, stats.Total, stats.CacheHits, originalLen, len(next))
 	return next, true
 }
 
@@ -131,6 +135,29 @@ func compressInlineImages(body []byte, params imageCompressParams) ([]byte, inli
 	for _, span := range spans {
 		stats.Total++
 		raw := body[span.start+1 : span.end]
+		if params.Cache != nil {
+			key := params.Cache.keyFor(raw)
+			if value, hit := params.Cache.get(key); hit {
+				stats.CacheHits++
+				if value == nil { // 负结果：上次判定保留原图
+					stats.Skipped++
+					continue
+				}
+				stats.Compressed++
+				replacements = append(replacements, replacement{span: span, text: value})
+				continue
+			}
+			next, ok := compressImageDataURL(raw, params)
+			if ok {
+				params.Cache.put(key, next)
+				stats.Compressed++
+				replacements = append(replacements, replacement{span: span, text: next})
+			} else {
+				params.Cache.put(key, nil)
+				stats.Skipped++
+			}
+			continue
+		}
 		next, ok := compressImageDataURL(raw, params)
 		if !ok {
 			stats.Skipped++
