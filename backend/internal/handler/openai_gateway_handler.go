@@ -507,6 +507,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+	service.SetOpenAIHTTPResponseOwner(c, subject.UserID, apiKey.ID)
+	resolvedBody, contextErr := h.gatewayService.ResolveStreamRecoveryContext(c.Request.Context(), c, body)
+	if contextErr != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Response continuation context is unavailable")
+		return
+	}
+	body = resolvedBody
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if previousResponseID != "" && openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformOpenAIBPS {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "BPS requires complete input history; previous_response_id is not supported")
@@ -677,6 +684,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(pricingCtx)
+	recovery := newOpenAIStreamRecovery(c, "responses", forwardBody, reqStream && !imageIntent && !nativeV2 && !legacyCompact && streamRecoveryRequestEligible(forwardBody))
+	recovery.configure(h.cfg)
+	defer recovery.finishOnReturn()
 
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
@@ -807,6 +817,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		recovery.begin(account)
+		attemptBody, _ = recovery.body(attemptBody)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -815,6 +827,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}()
 			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
 		}()
+		result = recovery.result(account, result, reqModel)
 		var cyberBlockBodyHTTP []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyHTTP = sessionHashBody
@@ -846,7 +859,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel)
-			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
+			billingAttempt := recovery.attempt
+			billingCtx := recovery.billingContext(c.Request.Context())
+			h.submitOpenAIUsageRecordTask(billingCtx, res, func(ctx context.Context) {
+				ctx = service.WithStreamRecoveryBillingAttempt(ctx, billingAttempt)
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
 					APIKey:             apiKey,
@@ -876,6 +892,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					).Error("openai.record_usage_failed", zap.Error(err))
 				}
 			})
+		}
+		if retry, terminal := recovery.afterAttempt(h.gatewayService, account, result, err, failedAccountIDs); retry || terminal {
+			submitResponsesUsage(result)
+			if retry {
+				previousResponseID = ""
+				h.gatewayService.RecordOpenAIAccountSwitch()
+				continue
+			}
+			return
 		}
 		if err != nil {
 			if result != nil && result.ClientDisconnect {
@@ -1315,6 +1340,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
+	recovery := newOpenAIStreamRecovery(c, "messages", body, reqStream && streamRecoveryRequestEligible(body))
+	recovery.configure(h.cfg)
+	defer recovery.finishOnReturn()
 
 	for {
 		if failoverClientGone(c) {
@@ -1400,6 +1428,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
+		recovery.begin(account)
+		forwardBody, _ = recovery.body(forwardBody)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -1409,6 +1439,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
 		}()
+		result = recovery.result(account, result, reqModel)
 		var cyberBlockBodyMsg []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyMsg = body
@@ -1441,7 +1472,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			channelUsageFields := clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel)
-			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
+			billingAttempt := recovery.attempt
+			billingCtx := recovery.billingContext(c.Request.Context())
+			h.submitOpenAIUsageRecordTask(billingCtx, res, func(ctx context.Context) {
+				ctx = service.WithStreamRecoveryBillingAttempt(ctx, billingAttempt)
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
 					APIKey:             apiKey,
@@ -1471,6 +1505,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				}
 			})
 		}
+		if retry, terminal := recovery.afterAttempt(h.gatewayService, account, result, err, failedAccountIDs); retry || terminal {
+			submitMessagesUsage(result)
+			if retry {
+				h.gatewayService.RecordOpenAIAccountSwitch()
+				continue
+			}
+			return
+		}
 		if err != nil {
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_messages.forward_partial_error_with_image_result",
@@ -1488,7 +1530,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						)
 						return
 					}
-					if c.Writer.Size() != writerSizeBeforeForward {
+					if c.Writer.Size() != writerSizeBeforeForward && !(recovery.writer != nil && !recovery.writer.HasOutput()) {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
 						h.handleAnthropicFailoverExhausted(c, failoverErr, true)
 						return
@@ -3723,6 +3765,11 @@ func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForwa
 func openAIForwardMayFailover(c *gin.Context, writerSizeBeforeForward int, failoverErr *service.UpstreamFailoverError) bool {
 	if c == nil || c.Writer == nil {
 		return false
+	}
+	if recovery, ok := c.Writer.(interface {
+		ProtocolWriter() *service.StreamRecoveryWriter
+	}); ok && !recovery.ProtocolWriter().HasOutput() {
+		return true
 	}
 	if service.OpenAICompactKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward {
 		return true

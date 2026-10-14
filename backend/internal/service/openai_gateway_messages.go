@@ -520,8 +520,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// Upstream is always streaming; choose response format based on client preference.
 	var result *OpenAIForwardResult
 	var handleErr error
+	var recoveryUsage *streamRecoveryUsageReader
 	if clientStream {
+		recoveryUsage = observeStreamRecoveryUsage(ctx, c, resp, "responses")
 		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
+		if result == nil && recoveryUsage != nil {
+			result = &OpenAIForwardResult{RequestID: resp.Header.Get("x-request-id"), UpstreamHeaders: resp.Header,
+				Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel, Stream: true, Duration: time.Since(startTime)}
+		}
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
 		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
@@ -537,11 +543,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
-	if handleErr == nil && result != nil {
-		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
+	if (handleErr == nil || recoveryUsage != nil) && result != nil {
+		if handleErr == nil && compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
 		}
-		if promptCacheKey != "" && anthropicDigestChain != "" {
+		if handleErr == nil && promptCacheKey != "" && anthropicDigestChain != "" {
 			s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
 		}
 		// 计费 tier 优先采用上游回显值；上游未回显时回退到最终出站 body（经过
@@ -566,7 +572,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	stampOpenAIResponsesUpstreamEndpoint(c, result)
-	return result, handleErr
+	return completeStreamRecoveryAttempt(ctx, c, account, resp, recoveryUsage, result), handleErr
 }
 
 func ensureCodexOAuthInstructionsField(reqBody map[string]any) {
