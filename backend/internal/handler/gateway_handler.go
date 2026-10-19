@@ -898,6 +898,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 			}
+			// 账号增强：思考强度封顶必须在账号选定之后应用（分组策略已在上方应用）。
+			// 记录改写前的档位用于 usage_logs.requested_reasoning_effort；
+			// 改写后的 output_config.effort 由 Forward 写进上游请求体。
+			requestedEffortForUsage := service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
+			if cappedBody, changed := service.ApplyEnhancedReasoningEffortForNativeAnthropicWithResult(account, attemptParsedReq.Body.Bytes()); changed {
+				if err := attemptParsedReq.ReplaceBody(cappedBody); err != nil {
+					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply account reasoning effort cap")
+					return
+				}
+			}
 			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
 			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -945,7 +955,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
-				stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort))
+				stampForwardRequestedReasoningEffort(result, requestedEffortForUsage)
 				if result.ReasoningEffort == nil {
 					result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
 				}

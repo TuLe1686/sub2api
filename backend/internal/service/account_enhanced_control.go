@@ -5,7 +5,7 @@
 // 在补丁1（TTFT 首字计时口径）和补丁2（定时测试超时保护）基础上叠加，
 // 为每个启用账号提供三块独立配置：
 //
-//  1. 缓存率改写：在 usage 写入 DB 前，按账号配置改写 cache_read_tokens 和
+//  1. 缓存率改写：在计费与 usage 写入 DB 之前，按账号配置改写 cache_read_tokens 和
 //     input_tokens，使上报的缓存率（cache_read/(cache_read+input)）呈现设定值。
 //     cache_creation_tokens 保持真实不动（它单独计费）。
 //     - 方式1 随机减少：真实缓存率 × (1 - 随机1~30%) → 反推 cache_read/input
@@ -13,6 +13,8 @@
 //     - 关闭：不改写
 //     约束：cache_read + input 的和不变（cache_creation 不参与，单独计费不动），
 //     只在两者之间重新分配。
+//     改写后的拆分同时用于**用户扣费**与 usage_logs；账号统计成本（上游成本口径）
+//     仍使用改写前的真实 token，避免把售价改写混进利润核算。
 //
 //  2. 首字时长改写：在 first_token_ms 记录完真实值（TTFT 补丁口径）之后，
 //     按账号配置直接覆盖 first_token_ms 为设定值。usage_logs 存改写后值，
@@ -27,7 +29,7 @@
 //     - override：无条件覆盖客户端值
 //     - fill：仅当客户端未显式传 effort 时注入
 //     - cap：封顶。客户端档位高于规则命中值时降为命中值，不高于则原样
-//       透传；usage 的 requested_reasoning_effort 保持客户端原值
+//     透传；usage 的 requested_reasoning_effort 保持客户端原值
 //     - off：不改写
 //     规则支持 '*' 通配（如 grok-*、*），精确命中优先于通配命中，
 //     多个通配命中时取更具体（非通配字符更多）的一条。
@@ -346,6 +348,69 @@ func ApplyCacheRateOverride(cfg CacheRateSetting, cacheRead, input, cacheCreatio
 	}
 }
 
+// ApplyEnhancedCacheRateOverride 在计费前按账号配置改写缓存拆分。
+//
+// 返回值是改写后的 cache_read / input 以及是否发生变化；cache_creation 不参与。
+// 调用方应把返回值同时用于**费用计算**与 usage_logs，未改写时保持原值。
+func ApplyEnhancedCacheRateOverride(account *Account, cacheRead, input, cacheCreation int) (newCacheRead, newInput int, changed bool) {
+	if account == nil {
+		return cacheRead, input, false
+	}
+	cfg := ParseEnhancedControl(account.Extra).CacheRate
+	cr := ApplyCacheRateOverride(cfg, cacheRead, input, cacheCreation)
+	if !cr.Changed {
+		return cacheRead, input, false
+	}
+	return cr.NewCacheRead, cr.NewInput, true
+}
+
+// ApplyEnhancedCacheRateToUsage 在计费前按账号配置改写 usage 的缓存拆分。
+//
+// 该函数必须在计算费用之前调用：改写后的 cache_read/input 会同时决定
+// 用户扣费（input 与 cache_read 单价不同）和 usage_logs 展示值；
+// cache_creation 保持不变，cache_read + input 的总和也不变。
+// 调用方若还需要上游真实 token（如账号统计成本），应在调用前自行快照。
+//
+// 返回是否发生了改写；account 为 nil 或配置关闭时返回 false。
+func ApplyEnhancedCacheRateToUsage(account *Account, usage *ClaudeUsage) bool {
+	if usage == nil {
+		return false
+	}
+	newCacheRead, newInput, changed := ApplyEnhancedCacheRateOverride(
+		account, usage.CacheReadInputTokens, usage.InputTokens, usage.CacheCreationInputTokens)
+	if !changed {
+		return false
+	}
+	usage.CacheReadInputTokens = newCacheRead
+	usage.InputTokens = newInput
+	return true
+}
+
+// AccountQuotaTotalCostForCacheSplit 返回按上游真实拆分计算的费用总额（账号额度口径）。
+//
+// cost 必须是用改写后拆分算出的账单；newInput/newCacheRead 是该账单使用的拆分，
+// rawInput/rawCacheRead 是上游真实拆分。缓存率改写只重分配 input/cache_read 且
+// 两者总和不变，因此按分项单价线性还原即可；长上下文等按输入总量判定的档位不受影响。
+// 账号额度/账号统计成本使用本函数还原后的金额，避免缓存率改写放大上游消耗。
+//
+// cost 为 nil 时返回 0；还原结果小于 0 时按 0 处理。
+func AccountQuotaTotalCostForCacheSplit(cost *CostBreakdown, newInput, newCacheRead, rawInput, rawCacheRead int) float64 {
+	if cost == nil {
+		return 0
+	}
+	total := cost.TotalCost
+	if newInput > 0 {
+		total -= float64(newInput-rawInput) * (cost.InputCost / float64(newInput))
+	}
+	if newCacheRead > 0 {
+		total -= float64(newCacheRead-rawCacheRead) * (cost.CacheReadCost / float64(newCacheRead))
+	}
+	if total < 0 {
+		return 0
+	}
+	return total
+}
+
 // ApplyTTFTRandomOverride 在 first_token_ms 记录点按方式1（500~3000ms 随机）覆盖。
 //
 // 方式1 不依赖总耗时，记录点可直接算。
@@ -372,6 +437,19 @@ func ApplyTTFTProportionalOverride(cfg TTFTSetting, totalDurationMs int) (ms int
 	jitter := 300 + rand.Intn(701) // 701 = 1000-300+1
 	ms = int(base) + jitter
 	return ms, true
+}
+
+// ApplyTTFTOverride 按配置选择首字时长改写方式；totalDurationMs 供比例模式使用。
+// 返回改写后的毫秒值与是否命中方式。
+func ApplyTTFTOverride(cfg TTFTSetting, totalDurationMs int) (ms int, ok bool) {
+	switch cfg.Mode {
+	case TTFTModeRandom:
+		return ApplyTTFTRandomOverride(cfg)
+	case TTFTModeProportional:
+		return ApplyTTFTProportionalOverride(cfg, totalDurationMs)
+	default:
+		return 0, false
+	}
 }
 
 // clampInt 把 v 限制在 [lo, hi] 区间。
@@ -823,17 +901,29 @@ func capEffortForAnthropicOutputConfig(effort string) string {
 
 // ApplyEnhancedReasoningEffortForNativeAnthropic 处理国产 Anthropic 直通
 // （/v1/messages 零转换）。写入 output_config.effort，fill 回看该字段。
+//
+// 返回值只保留 body 版本；需要知道是否发生改写时用
+// ApplyEnhancedReasoningEffortForNativeAnthropicWithResult。
 func ApplyEnhancedReasoningEffortForNativeAnthropic(account *Account, body []byte) []byte {
+	updated, _ := ApplyEnhancedReasoningEffortForNativeAnthropicWithResult(account, body)
+	return updated
+}
+
+// ApplyEnhancedReasoningEffortForNativeAnthropicWithResult 同上，额外返回是否改写。
+//
+// Anthropic 网关（GatewayService.Messages）也走这条实现：在请求体发往
+// 上游之前按账号规则改写 output_config.effort，cap 模式只降不升。
+func ApplyEnhancedReasoningEffortForNativeAnthropicWithResult(account *Account, body []byte) ([]byte, bool) {
 	if account == nil || len(body) == 0 {
-		return body
+		return body, false
 	}
 	set, ok := enhancedReasoningEffortApplies(account)
 	if !ok {
-		return body
+		return body, false
 	}
 	effort, matched := MatchReasoningEffortRule(set, enhancedReasoningEffortModelCandidates(account, body))
 	if !matched {
-		return body
+		return body, false
 	}
 	// cap 模式保持补丁档位语义（xhigh 就是 xhigh，不做 xhigh→max 换算），
 	// 否则上限会被抬到 max，封顶失效；override/fill 沿用既有映射。
@@ -842,7 +932,7 @@ func ApplyEnhancedReasoningEffortForNativeAnthropic(account *Account, body []byt
 		claudeEffort = capEffortForAnthropicOutputConfig(effort)
 	}
 	if claudeEffort == "" {
-		return body
+		return body, false
 	}
 	clientExplicit := strings.TrimSpace(gjson.GetBytes(body, "output_config.effort").String()) != ""
 	mapped := ReasoningEffortSetting{
@@ -850,7 +940,7 @@ func ApplyEnhancedReasoningEffortForNativeAnthropic(account *Account, body []byt
 		Rules: []ReasoningEffortRule{{Model: "*", Effort: claudeEffort}},
 	}
 	if updated, changed := applyReasoningEffortCore(body, "output_config.effort", mapped, []string{"*"}, clientExplicit); changed {
-		return updated
+		return updated, true
 	}
-	return body
+	return body, false
 }

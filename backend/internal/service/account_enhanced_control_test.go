@@ -1047,6 +1047,124 @@ func TestApplyEnhancedReasoningEffortForAccount_Cap(t *testing.T) {
 	}
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// 缓存率改写入库口径（计费前应用）
+// ──────────────────────────────────────────────────────────────────────────
+
+func cacheRateAccount(mode CacheRateMode, minPercent, maxPercent, fixed int) *Account {
+	return &Account{
+		Platform: PlatformAnthropic,
+		Extra: map[string]any{
+			EnhancedControlKey: map[string]any{
+				"cache_rate": map[string]any{
+					"mode":              string(mode),
+					"random_reduce_min": minPercent,
+					"random_reduce_max": maxPercent,
+					"fixed_value":       fixed,
+				},
+			},
+		},
+	}
+}
+
+func TestApplyEnhancedCacheRateOverride_PreservesSum(t *testing.T) {
+	account := cacheRateAccount(CacheRateModeFixed, 0, 0, 50)
+	cacheRead, input, changed := ApplyEnhancedCacheRateOverride(account, 9000, 1000, 777)
+	if !changed {
+		t.Fatal("fixed 50% should change the split")
+	}
+	if cacheRead != 5000 || input != 5000 {
+		t.Fatalf("split = %d/%d, want 5000/5000", cacheRead, input)
+	}
+	if cacheRead+input != 10000 {
+		t.Fatalf("sum = %d, want 10000", cacheRead+input)
+	}
+}
+
+func TestApplyEnhancedCacheRateOverride_OffAndNil(t *testing.T) {
+	for name, account := range map[string]*Account{
+		"nil": nil,
+		"off": cacheRateAccount(CacheRateModeOff, 0, 0, 0),
+	} {
+		cacheRead, input, changed := ApplyEnhancedCacheRateOverride(account, 9000, 1000, 777)
+		if changed || cacheRead != 9000 || input != 1000 {
+			t.Fatalf("%s: changed=%v split=%d/%d, want untouched", name, changed, cacheRead, input)
+		}
+	}
+}
+
+func TestApplyEnhancedCacheRateToUsage_RewritesSplitOnly(t *testing.T) {
+	account := cacheRateAccount(CacheRateModeFixed, 0, 0, 40)
+	usage := &ClaudeUsage{InputTokens: 600, CacheReadInputTokens: 9400, CacheCreationInputTokens: 123}
+	if !ApplyEnhancedCacheRateToUsage(account, usage) {
+		t.Fatal("fixed 40% should rewrite usage")
+	}
+	if usage.CacheReadInputTokens != 4000 || usage.InputTokens != 6000 {
+		t.Fatalf("split = %d/%d, want 4000/6000", usage.CacheReadInputTokens, usage.InputTokens)
+	}
+	if usage.CacheReadInputTokens+usage.InputTokens != 10000 {
+		t.Fatalf("sum = %d, want 10000", usage.CacheReadInputTokens+usage.InputTokens)
+	}
+	if usage.CacheCreationInputTokens != 123 {
+		t.Fatalf("cache_creation = %d, want untouched 123", usage.CacheCreationInputTokens)
+	}
+	if ApplyEnhancedCacheRateToUsage(account, nil) {
+		t.Fatal("nil usage must not report a change")
+	}
+}
+
+func TestApplyEnhancedReasoningEffortForNativeAnthropicWithResult_ReportsChange(t *testing.T) {
+	account := overrideEffortAccount(ReasoningEffortModeCap, "*", "xhigh")
+	body := []byte(`{"model":"claude-opus-5.5","output_config":{"effort":"max"}}`)
+	got, changed := ApplyEnhancedReasoningEffortForNativeAnthropicWithResult(account, body)
+	if !changed {
+		t.Fatal("cap should report a change for max -> xhigh")
+	}
+	if v := gjson.GetBytes(got, "output_config.effort").String(); v != "xhigh" {
+		t.Fatalf("output_config.effort = %q, want xhigh", v)
+	}
+
+	below := []byte(`{"model":"claude-opus-5.5","output_config":{"effort":"high"}}`)
+	if _, changed := ApplyEnhancedReasoningEffortForNativeAnthropicWithResult(account, below); changed {
+		t.Fatal("cap must not report a change when the client is below the ceiling")
+	}
+
+	off := &Account{Platform: PlatformAnthropic, Extra: map[string]any{}}
+	if _, changed := ApplyEnhancedReasoningEffortForNativeAnthropicWithResult(off, body); changed {
+		t.Fatal("account without enhanced config must not change the body")
+	}
+}
+
+func TestAccountQuotaTotalCostForCacheSplit_RestoresRawCost(t *testing.T) {
+	// 改写后：input=6000（单价 1），cache_read=4000（单价 0.3）→ 7200
+	// 真实：input=1000，cache_read=9000 → 1000 + 2700 = 3700
+	cost := &CostBreakdown{InputCost: 6000, CacheReadCost: 1200, TotalCost: 7200}
+	got := AccountQuotaTotalCostForCacheSplit(cost, 6000, 4000, 1000, 9000)
+	if math.Abs(got-3700) > 1e-6 {
+		t.Fatalf("restored total = %v, want 3700", got)
+	}
+	if got := AccountQuotaTotalCostForCacheSplit(nil, 1, 1, 1, 1); got != 0 {
+		t.Fatalf("nil cost = %v, want 0", got)
+	}
+	// 没有 cache_read 计费时只还原 input 部分
+	cost = &CostBreakdown{InputCost: 5000, TotalCost: 5000}
+	if got := AccountQuotaTotalCostForCacheSplit(cost, 5000, 5000, 1000, 9000); math.Abs(got-1000) > 1e-6 {
+		t.Fatalf("no-cache-price restored total = %v, want 1000", got)
+	}
+}
+
+func TestApplyTTFTOverride_ModeRouting(t *testing.T) {
+	if _, ok := ApplyTTFTOverride(TTFTSetting{Mode: TTFTModeOff}, 10000); ok {
+		t.Fatal("off mode must not override")
+	}
+	if ms, ok := ApplyTTFTOverride(TTFTSetting{Mode: TTFTModeRandom}, 10000); !ok || ms < 500 || ms > 3000 {
+		t.Fatalf("random mode = %d/%v, want 500..3000", ms, ok)
+	}
+	if ms, ok := ApplyTTFTOverride(TTFTSetting{Mode: TTFTModeProportional}, 10000); !ok || ms < 1300 || ms > 2000 {
+		t.Fatalf("proportional mode = %d/%v, want 1300..2000", ms, ok)
+	}
+}
+
 func derefUsageEffort(v *string) string {
 	if v == nil {
 		return "<nil>"
