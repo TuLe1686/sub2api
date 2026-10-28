@@ -904,7 +904,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 			if releaseRate != nil {
 				releaseRate()
 			}
-			attemptTimedOut := errors.Is(attemptCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil
+			attemptTimedOut := refreshAttemptDeadlineExceeded(ctx, attemptCtx)
 			if err == nil && newCredentials != nil && !attemptTimedOut {
 				newCredentials["_token_version"] = time.Now().UnixMilli()
 				if saveErr := persistAccountCredentials(attemptCtx, s.accountRepo, account, newCredentials); saveErr != nil {
@@ -914,7 +914,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 				}
 			}
 		}
-		attemptTimedOut := errors.Is(attemptCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil
+		attemptTimedOut := refreshAttemptDeadlineExceeded(ctx, attemptCtx)
 		cancelAttempt()
 		releaseAttempt()
 		persistedAfterAttemptDeadline := attemptTimedOut && credentialsPersisted && err == nil
@@ -1280,6 +1280,17 @@ type accountPermanentRefreshError struct {
 	err                     error
 	persistentlyBlocked     bool
 	cacheInvalidationFailed bool
+}
+
+func refreshAttemptDeadlineExceeded(parent, attempt context.Context) bool {
+	if parent.Err() != nil {
+		return false
+	}
+	if errors.Is(attempt.Err(), context.DeadlineExceeded) {
+		return true
+	}
+	deadline, ok := attempt.Deadline()
+	return ok && !time.Now().Before(deadline)
 }
 
 type refreshAttemptTimeoutError struct {
