@@ -93,7 +93,9 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {
-		if err := lease.Charge(int64(len(raw)) * requestmemory.ParserWeight); err != nil {
+		// image-compress 补丁：>40MiB 的 body 用 2× 权重（读取计费=分块~2×+拼装 1×+权重×），
+		// 与守卫分段配套把 512MiB 预算下的读取上限抬到 ~110MiB。≤40MiB 维持 4×。
+		if err := lease.Charge(int64(len(raw)) * requestmemory.ParserWeightForBodySize(int64(len(raw)))); err != nil {
 			return nil, err
 		}
 		return raw, nil
@@ -103,7 +105,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
 	}
-	if err := lease.Charge(int64(len(decoded)) * requestmemory.ParserWeight); err != nil {
+	if err := lease.Charge(int64(len(decoded)) * requestmemory.ParserWeightForBodySize(int64(len(decoded)))); err != nil {
 		return nil, err
 	}
 

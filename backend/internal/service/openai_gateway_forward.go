@@ -1044,6 +1044,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	httpInvalidEncryptedContentRetryTried := false
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
+	// ── Responses 内联图片压缩（image-compress 补丁）──
+	// 位置：body 定型之后、缓存亲和注入与重试循环之前——只压缩一次、全 attempt 共用，
+	// 后续所有重写（模型映射 / prompt_cache_key 注入）都作用在压缩后的小 body 上。
+	// 未命中门控（分组/阈值/开关）时零开销。见 openai_responses_image_compress.go。
+	if compressedBody, compressed := s.compressResponsesInlineImages(c, body); compressed {
+		body = compressedBody
+	}
+	// ── 压缩结束 ──
 	// ── Responses 缓存亲和注入（prompt-cache-affinity 补丁）──
 	// 位置：body 定型之后、重试循环之前——循环内所有 attempt 共用同一份注入结果；
 	// 上游把该字段当未知参数拒绝时，由 rejectedFieldRetry 删除后重试（见

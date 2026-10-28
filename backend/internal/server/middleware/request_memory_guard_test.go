@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -120,5 +122,60 @@ func TestRequestMemoryGuardHTTP1SlowBodyDeadlineAndRelease(t *testing.T) {
 	}
 	if m.Snapshot().UsedBytes != 0 {
 		t.Fatal("timed out reader leaked")
+	}
+}
+
+// image-compress 补丁：预扣分段（≤40MiB 维持 6×CL；>40MiB 取 2×CL+312MiB 与 5×CL 的较大者）。
+func TestRequestMemoryGuardInitialBytesPiecewise(t *testing.T) {
+	if got, ok := requestMemoryGuardInitialBytes(0); !ok || got != 576 {
+		t.Fatalf("unknown length must reserve 576: (%d,%v)", got, ok)
+	}
+	if got, ok := requestMemoryGuardInitialBytes(1 << 20); !ok || got != int64(6*(1<<20)+4096) {
+		t.Fatalf("small body must keep legacy formula: (%d,%v)", got, ok)
+	}
+	boundary := int64(40 << 20)
+	if got, ok := requestMemoryGuardInitialBytes(boundary); !ok || got != 6*boundary+4096 {
+		t.Fatalf("boundary 40MiB must stay legacy: (%d,%v)", got, ok)
+	}
+	if got, ok := requestMemoryGuardInitialBytes(boundary + 1); !ok || got != 2*(boundary+1)+(312<<20) {
+		t.Fatalf("40MiB+1 must switch to heavy formula: (%d,%v)", got, ok)
+	}
+	heavy := int64(41 << 20)
+	if got, ok := requestMemoryGuardInitialBytes(heavy); !ok || got != 2*heavy+(312<<20) {
+		t.Fatalf("heavy body formula mismatch: (%d,%v)", got, ok)
+	}
+	// 读取计费 5×CL 在 104MiB 后超过 2×CL+312MiB，预扣必须跟着取大值，
+	// 否则准入通过的请求会死在读取中途。
+	readDominated := int64(110 << 20)
+	if got, ok := requestMemoryGuardInitialBytes(readDominated); !ok || got != 5*readDominated {
+		t.Fatalf("110MiB must reserve read cost 5x: (%d,%v)", got, ok)
+	}
+	// 准入硬上限（rev 4，与预算解耦）：恰好 150MiB 可入，150MiB+1 无论预算多大都拒。
+	if _, ok := requestMemoryGuardInitialBytes(int64(150 << 20)); !ok {
+		t.Fatal("150MiB must still be admissible")
+	}
+	if _, ok := requestMemoryGuardInitialBytes(int64(150<<20) + 1); ok {
+		t.Fatal("150MiB+1 must be rejected by hard cap regardless of budget")
+	}
+	if _, ok := requestMemoryGuardInitialBytes(math.MaxInt64); ok {
+		t.Fatal("overflow must be rejected")
+	}
+}
+
+// 超硬上限必须在读取前返回 413 request_body_too_large，不能复用预算耗尽的 503 文案。
+func TestRequestMemoryGuardOversizeBodyRejectsAs413(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	called := false
+	r.POST("/v1/responses", RequestMemoryGuard(memoryGuardTestConfig(), 256<<20), func(c *gin.Context) { called = true })
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader("x"))
+	req.ContentLength = int64(150<<20) + 1
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge || called {
+		t.Fatalf("code=%d downstream=%v body=%s", rec.Code, called, rec.Body)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "request_body_too_large") || strings.Contains(body, "budget exhausted") {
+		t.Fatalf("unexpected error body: %s", body)
 	}
 }
