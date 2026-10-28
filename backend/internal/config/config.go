@@ -989,6 +989,26 @@ const (
 	ImageConcurrencyOverflowModeWait   = "wait"
 )
 
+// GatewayRequestMemoryGuardConfig bounds conservative HTTP request-input cost.
+// It does not measure or cap the Go heap; explicit owners release reservations.
+type GatewayRequestMemoryGuardConfig struct {
+	Enabled            bool  `mapstructure:"enabled"`
+	BudgetBytes        int64 `mapstructure:"budget_bytes"`
+	WaitTimeoutMS      int   `mapstructure:"wait_timeout_ms"`
+	MaxWaiting         int   `mapstructure:"max_waiting"`
+	ReadTimeoutSeconds int   `mapstructure:"read_timeout_seconds"`
+}
+
+func (c GatewayRequestMemoryGuardConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.BudgetBytes <= 0 || c.WaitTimeoutMS < 0 || c.WaitTimeoutMS > 60000 || c.MaxWaiting < 0 || c.MaxWaiting > 10000 || c.ReadTimeoutSeconds <= 0 || c.ReadTimeoutSeconds > 3600 {
+		return fmt.Errorf("invalid gateway.request_memory_guard configuration: positive budget/read timeout and bounded nonnegative wait/max_waiting required")
+	}
+	return nil
+}
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -1008,7 +1028,8 @@ type GatewayConfig struct {
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
-	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
+	TextMaxBodySize    int64                           `mapstructure:"text_max_body_size"`
+	RequestMemoryGuard GatewayRequestMemoryGuardConfig `mapstructure:"request_memory_guard"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 上游模型列表响应体读取上限（字节）
@@ -2577,6 +2598,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
+	viper.SetDefault("gateway.request_memory_guard.enabled", false)
+	viper.SetDefault("gateway.request_memory_guard.budget_bytes", int64(512<<20))
+	viper.SetDefault("gateway.request_memory_guard.wait_timeout_ms", 250)
+	viper.SetDefault("gateway.request_memory_guard.max_waiting", 32)
+	viper.SetDefault("gateway.request_memory_guard.read_timeout_seconds", 60)
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
@@ -3417,6 +3443,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Idempotency.CleanupBatchSize <= 0 {
 		return fmt.Errorf("idempotency.cleanup_batch_size must be positive")
+	}
+	if err := c.Gateway.RequestMemoryGuard.Validate(); err != nil {
+		return err
 	}
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
