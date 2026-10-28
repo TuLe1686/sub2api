@@ -73,13 +73,16 @@ type usageLogBestEffortWriter interface {
 
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
-	Cost                  *CostBreakdown
-	User                  *User
-	APIKey                *APIKey
-	Account               *Account
-	Subscription          *UserSubscription
-	RequestPayloadHash    string
-	IsSubscriptionBill    bool
+	Cost               *CostBreakdown
+	User               *User
+	APIKey             *APIKey
+	Account            *Account
+	Subscription       *UserSubscription
+	RequestPayloadHash string
+	IsSubscriptionBill bool
+	// AccountQuotaTotalCost 覆盖账号额度累计使用的金额（上游真实 token 口径）。
+	// nil 时沿用 Cost.TotalCost；缓存率改写会抬高客户售价，但不应放大账号额度消耗。
+	AccountQuotaTotalCost *float64
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
@@ -343,7 +346,11 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
-		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+		accountQuotaTotal := p.Cost.TotalCost
+		if p.AccountQuotaTotalCost != nil {
+			accountQuotaTotal = *p.AccountQuotaTotalCost
+		}
+		cmd.AccountQuotaCost = accountQuotaTotal * p.AccountRateMultiplier
 	}
 
 	cmd.Normalize()
@@ -787,6 +794,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
+	// 账号增强：缓存率改写必须在算钱之前应用，让用户扣费与 usage_logs
+	// 使用同一份拆分；账号统计成本随后仍用改写前的真实 token。
+	rawUsageForAccountStats := result.Usage
+	cacheRateChanged := ApplyEnhancedCacheRateToUsage(account, &result.Usage)
+
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := 1.0
 	if s.cfg != nil {
@@ -861,25 +873,48 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		billingType = BillingTypeSubscription
 	}
 
+	// 账号额度/账号统计成本默认按上游真实拆分还原：缓存率改写只抬客户售价，
+	// 不能让账号额度以改写后的价格消耗。账号统计口径为 billed 时改用售价口径。
+	var rawQuotaTotalCost *float64
+	if cacheRateChanged && cost != nil {
+		raw := AccountQuotaTotalCostForCacheSplit(cost,
+			result.Usage.InputTokens, result.Usage.CacheReadInputTokens,
+			rawUsageForAccountStats.InputTokens, rawUsageForAccountStats.CacheReadInputTokens)
+		rawQuotaTotalCost = &raw
+	}
+	accountStatsTotalCost, accountQuotaTotalCost, fixedAccountStatsCost := ResolveEnhancedAccountStatsCosts(account, cost, rawQuotaTotalCost)
+
 	// 创建使用日志
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost)
 
+	// 账号增强：首字时长改写（usage_logs 展示层，不影响计费）。
+	if account != nil {
+		if cfg := ParseEnhancedControl(account.Extra).TTFT; cfg.Mode != TTFTModeOff {
+			if ms, ok := ApplyTTFTOverride(cfg, int(result.Duration.Milliseconds())); ok {
+				usageLog.FirstTokenMs = &ms
+			}
+		}
+	}
+
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
-	if apiKey.GroupID != nil {
+	if fixedAccountStatsCost != nil {
+		usageLog.AccountStatsCost = fixedAccountStatsCost
+	} else if apiKey.GroupID != nil {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
 			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
+			// 账号统计成本必须用上游真实 token：缓存率改写只影响客户售价，不能污染利润口径。
 			UsageTokens{
-				InputTokens:         result.Usage.InputTokens,
-				OutputTokens:        result.Usage.OutputTokens,
-				CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-				CacheReadTokens:     result.Usage.CacheReadInputTokens,
-				ImageOutputTokens:   result.Usage.ImageOutputTokens,
+				InputTokens:         rawUsageForAccountStats.InputTokens,
+				OutputTokens:        rawUsageForAccountStats.OutputTokens,
+				CacheCreationTokens: rawUsageForAccountStats.CacheCreationInputTokens,
+				CacheReadTokens:     rawUsageForAccountStats.CacheReadInputTokens,
+				ImageOutputTokens:   rawUsageForAccountStats.ImageOutputTokens,
 			},
-			cost.TotalCost, pricingAt,
+			accountStatsTotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(nil),
 		)
 	}
@@ -905,6 +940,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                       cost,
+		AccountQuotaTotalCost:      accountQuotaTotalCost,
 		User:                       user,
 		APIKey:                     apiKey,
 		Account:                    account,

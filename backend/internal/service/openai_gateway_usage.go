@@ -194,6 +194,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputTokens:    result.Usage.ImageOutputTokens,
 	}
 
+	// 账号增强：缓存率改写必须在算钱之前应用，让用户扣费与 usage_logs
+	// 使用同一份拆分。账号统计成本随后仍用 result.Usage 的真实 token。
+	rawTokens := tokens
+	tokens.CacheReadTokens, tokens.InputTokens, _ = ApplyEnhancedCacheRateOverride(
+		account, tokens.CacheReadTokens, tokens.InputTokens, tokens.CacheCreationTokens)
+	cacheRateChanged := rawTokens.CacheReadTokens != tokens.CacheReadTokens || rawTokens.InputTokens != tokens.InputTokens
+
 	// Get rate multiplier
 	multiplier := 1.0
 	if s.cfg != nil {
@@ -331,6 +338,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		billingType = BillingTypeSubscription
 	}
 
+	// 账号额度/账号统计成本默认按上游真实拆分还原：缓存率改写只抬客户售价，
+	// 不能让账号额度以改写后的价格消耗。账号统计口径为 billed 时改用售价口径。
+	var rawQuotaTotalCost *float64
+	if cacheRateChanged && cost != nil {
+		raw := AccountQuotaTotalCostForCacheSplit(cost,
+			tokens.InputTokens, tokens.CacheReadTokens,
+			rawTokens.InputTokens, rawTokens.CacheReadTokens)
+		rawQuotaTotalCost = &raw
+	}
+	accountStatsTotalCost, accountQuotaTotalCost, fixedAccountStatsCost := ResolveEnhancedAccountStatsCosts(account, cost, rawQuotaTotalCost)
+
 	// Create usage log
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
@@ -390,13 +408,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		UpstreamModelMismatch:    upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
 		ServiceTier:              result.ServiceTier,
 		ReasoningEffort:          result.ReasoningEffort,
-		RequestedReasoningEffort: coalesceRequestedReasoningEffort(result.RequestedReasoningEffort, result.ReasoningEffort),
+		RequestedReasoningEffort: requestedReasoningEffortForUsageLog(account, result.RequestedReasoningEffort, result.ReasoningEffort),
 		InboundEndpoint:          optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:         optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:              actualInputTokens,
+		InputTokens:              tokens.InputTokens,
 		OutputTokens:             result.Usage.OutputTokens,
 		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:          result.Usage.CacheReadInputTokens,
+		CacheReadTokens:          tokens.CacheReadTokens,
 		ImageInputTokens:         result.Usage.ImageInputTokens,
 		ImageOutputTokens:        result.Usage.ImageOutputTokens,
 		ImageCount:               result.ImageCount,
@@ -441,6 +459,28 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
+
+	// ── 账号增强控制改写（account-enhanced-control 补丁）──────────────
+	// 缓存率改写已在算钱前应用到 tokens（见本函数上方），这里只处理
+	// 首字时长：方式1（500~3000ms 随机）和方式2（总耗时×10%+随机300~1000ms）
+	// 都在这里覆盖 first_token_ms。此时真实首字已记录（TTFT 补丁口径）、
+	// 总耗时也已算出，两方式都能处理。usage_logs 存改写后值，不保留真实值。
+	if account != nil {
+		enhancedCfg := ParseEnhancedControl(account.Extra)
+
+		// 首字时长改写（方式1 随机 / 方式2 比例）
+		if enhancedCfg.TTFT.Mode == TTFTModeRandom {
+			if ms, ok := ApplyTTFTRandomOverride(enhancedCfg.TTFT); ok {
+				usageLog.FirstTokenMs = &ms
+			}
+		} else if enhancedCfg.TTFT.Mode == TTFTModeProportional {
+			if ms, ok := ApplyTTFTProportionalOverride(enhancedCfg.TTFT, durationMs); ok {
+				usageLog.FirstTokenMs = &ms
+			}
+		}
+	}
+	// ── 账号增强控制改写结束 ──────────────────────────────────────────
+
 	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
@@ -480,10 +520,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
-	if apiKey.GroupID != nil {
+	if fixedAccountStatsCost != nil {
+		usageLog.AccountStatsCost = fixedAccountStatsCost
+	} else if apiKey.GroupID != nil {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
-			tokens, cost.TotalCost, pricingAt,
+			rawTokens, accountStatsTotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(longContextBillingGate),
 		)
 	}
@@ -505,6 +547,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                       cost,
+		AccountQuotaTotalCost:      accountQuotaTotalCost,
 		User:                       user,
 		APIKey:                     apiKey,
 		Account:                    account,
