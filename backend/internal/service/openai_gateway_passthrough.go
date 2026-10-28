@@ -356,6 +356,12 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	agentTaskRecoveryTried := false
 	compactModelFallbackRetried := false
+	// ── Responses 缓存亲和注入（prompt-cache-affinity 补丁）──
+	// 与 Forward 路径同点：body 定型之后、重试循环之前，所有 attempt 共用注入结果。
+	if injectedBody, injected := s.injectResponsesPromptCacheAffinity(c, account, body); injected {
+		body = injectedBody
+	}
+	// ── 注入结束 ──
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	var resp *http.Response
 	var usage *OpenAIUsage
