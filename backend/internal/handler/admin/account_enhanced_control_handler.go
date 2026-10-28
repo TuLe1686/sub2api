@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"bytes"
+	"encoding/json"
 	"strconv"
 
 	"github.com/MACOS-DO/sub4api/internal/pkg/response"
@@ -8,26 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ──────────────────────────────────────────────────────────────────────────
-// 账号增强控制（account-enhanced-control 补丁）
-//
-// 为每个启用账号提供缓存率改写、首字时长改写和思考强度强制三块独立配置。
-// 配置存放在 Account.extra["enhanced_control"]，通过专用的 GET/PUT 端点
-// 读写，只更新 extra 里的这一个 key，不影响其他运行态键。
-// ──────────────────────────────────────────────────────────────────────────
-
-// EnhancedControlRequest 是 PUT /admin/accounts/:id/enhanced-control 的请求体。
-// 整体替换该账号的 enhanced_control 配置（key 级合并进 extra）。
-// account_stats 缺省时保留已存口径，旧版前端保存其它配置不会把它重置。
+// EnhancedControlRequest 保持前三项整体替换；缺失的新字段保留已存配置。
 type EnhancedControlRequest struct {
 	CacheRate       *service.CacheRateSetting       `json:"cache_rate,omitempty"`
 	TTFT            *service.TTFTSetting            `json:"ttft,omitempty"`
 	ReasoningEffort *service.ReasoningEffortSetting `json:"reasoning_effort,omitempty"`
 	AccountStats    *service.AccountStatsSetting    `json:"account_stats,omitempty"`
+	StreamRecovery  json.RawMessage                 `json:"stream_recovery"`
 }
 
 // GetEnhancedControl GET /api/v1/admin/accounts/:id/enhanced-control
-// 返回指定账号的增强控制配置。未配置时返回全零值（等价于全关闭）。
 func (h *AccountHandler) GetEnhancedControl(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -39,13 +31,11 @@ func (h *AccountHandler) GetEnhancedControl(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	cfg := service.ParseEnhancedControl(account.Extra)
-	response.Success(c, cfg)
+	response.Success(c, service.ParseEnhancedControl(account.Extra))
 }
 
 // UpdateEnhancedControl PUT /api/v1/admin/accounts/:id/enhanced-control
-// 整体替换该账号的 enhanced_control 配置。
-// 只更新 extra 里的 "enhanced_control" 这一个 key，其他 extra 字段保留。
+// 只合并 extra["enhanced_control"]，其余运行态键由 UpdateAccountExtra 保留。
 func (h *AccountHandler) UpdateEnhancedControl(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -58,11 +48,9 @@ func (h *AccountHandler) UpdateEnhancedControl(c *gin.Context) {
 		return
 	}
 
-	// 组装 EnhancedControl 结构
 	cfg := service.EnhancedControl{
-		CacheRate:       service.CacheRateSetting{},
-		TTFT:            service.TTFTSetting{},
 		ReasoningEffort: service.ReasoningEffortSetting{Mode: service.ReasoningEffortModeOff},
+		StreamRecovery:  service.StreamRecoverySetting{CooldownSeconds: 600},
 	}
 	if req.CacheRate != nil {
 		cfg.CacheRate = *req.CacheRate
@@ -73,33 +61,52 @@ func (h *AccountHandler) UpdateEnhancedControl(c *gin.Context) {
 	if req.ReasoningEffort != nil {
 		cfg.ReasoningEffort = *req.ReasoningEffort
 	}
-	if req.AccountStats != nil {
-		cfg.AccountStats = service.AccountStatsSetting{Mode: service.NormalizeAccountStatsMode(req.AccountStats.Mode)}
-	} else {
-		existing, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	var stored *service.EnhancedControl
+	if req.AccountStats == nil || len(req.StreamRecovery) == 0 {
+		account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
-		cfg.AccountStats = service.ParseEnhancedControl(existing.Extra).AccountStats
+		existing := service.ParseEnhancedControl(account.Extra)
+		stored = &existing
+	}
+	if req.AccountStats != nil {
+		cfg.AccountStats = service.AccountStatsSetting{Mode: service.NormalizeAccountStatsMode(req.AccountStats.Mode)}
+	} else {
+		cfg.AccountStats = stored.AccountStats
 	}
 
-	// 通过 UpdateAccountExtra 做 key 级 JSONB 合并，
-	// 只更新 extra["enhanced_control"]，不影响其他键。
-	updates := map[string]any{
-		service.EnhancedControlKey: cfg,
+	if len(req.StreamRecovery) == 0 {
+		cfg.StreamRecovery = stored.StreamRecovery
+	} else {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(req.StreamRecovery, &fields); err != nil || fields == nil {
+			response.BadRequest(c, "stream_recovery must be an object")
+			return
+		}
+		if raw, provided := fields["enabled"]; provided {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &cfg.StreamRecovery.Enabled) != nil {
+				response.BadRequest(c, "stream_recovery.enabled must be a boolean")
+				return
+			}
+		}
+		if raw, provided := fields["cooldown_seconds"]; provided {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &cfg.StreamRecovery.CooldownSeconds) != nil || cfg.StreamRecovery.CooldownSeconds < 0 || cfg.StreamRecovery.CooldownSeconds > 86400 {
+				response.BadRequest(c, "stream_recovery.cooldown_seconds must be an integer between 0 and 86400")
+				return
+			}
+		}
 	}
-	if err := h.adminService.UpdateAccountExtra(c.Request.Context(), accountID, updates); err != nil {
+
+	if err := h.adminService.UpdateAccountExtra(c.Request.Context(), accountID, map[string]any{service.EnhancedControlKey: cfg}); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-
-	// 读回最新 account 返回
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	cfg = service.ParseEnhancedControl(account.Extra)
-	response.Success(c, cfg)
+	response.Success(c, service.ParseEnhancedControl(account.Extra))
 }

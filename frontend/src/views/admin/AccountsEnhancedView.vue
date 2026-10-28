@@ -246,6 +246,37 @@
             </template>
           </div>
 
+          <!-- 自动断流恢复仅适用于 OpenAI API Key 账号 -->
+          <div v-if="streamRecoveryEligible(account)" class="mb-4">
+            <label class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+              <input
+                v-model="account.config.stream_recovery.enabled"
+                type="checkbox"
+                @change="markDirty(account.id)"
+              />
+              {{ t('admin.accountsEnhanced.streamRecovery') }}
+            </label>
+            <label class="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+              {{ t('admin.accountsEnhanced.streamRecoveryCooldown') }}
+              <input
+                v-model.number="account.config.stream_recovery.cooldown_seconds"
+                type="number"
+                min="0"
+                max="86400"
+                step="1"
+                class="input input-sm w-24"
+                @input="markDirty(account.id)"
+              />
+              {{ t('admin.accountsEnhanced.streamRecoverySeconds') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accountsEnhanced.streamRecoveryScope') }}
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accountsEnhanced.streamRecoveryZeroHint') }}
+            </p>
+          </div>
+
           <!-- 保存按钮 -->
           <div class="flex justify-end border-t border-gray-100 pt-3 dark:border-dark-700">
             <button
@@ -280,8 +311,15 @@ import {
   type AccountStatsMode,
 } from '@/api/admin/accounts'
 import type { Account } from '@/types'
+import { useAppStore } from '@/stores/app'
+import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
+const appStore = useAppStore()
+
+function streamRecoveryEligible(account: Account): boolean {
+  return account.platform === 'openai' && account.type === 'apikey'
+}
 
 /** 可注入的思考强度档位（与后端白名单一致） */
 const effortOptions = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
@@ -297,6 +335,7 @@ function defaultConfig(): EnhancedControl {
     ttft: { mode: 'off' } as TTFTSetting,
     reasoning_effort: { mode: 'off', rules: [] } as ReasoningEffortSetting,
     account_stats: { mode: 'raw' },
+    stream_recovery: { enabled: false, cooldown_seconds: 600 },
   }
 }
 
@@ -314,6 +353,10 @@ function normalizeConfig(raw?: Partial<EnhancedControl> | null): EnhancedControl
       rules: Array.isArray(raw?.reasoning_effort?.rules) ? raw.reasoning_effort.rules : [],
     },
     account_stats: { mode: normalizeAccountStatsMode(raw?.account_stats?.mode) },
+    stream_recovery: {
+      enabled: raw?.stream_recovery?.enabled ?? false,
+      cooldown_seconds: raw?.stream_recovery?.cooldown_seconds ?? 600,
+    },
   }
 }
 
@@ -333,13 +376,15 @@ async function loadAccounts() {
         let config = defaultConfig()
         try {
           config = normalizeConfig(await getEnhancedControl(acc.id))
-        } catch {
-          // keep default
+        } catch (error) {
+          appStore.showError(extractApiErrorMessage(error, t('common.error')))
         }
         dirty[acc.id] = false
         return { ...acc, config }
       })
     )
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
   } finally {
     loading.value = false
   }
@@ -350,13 +395,22 @@ async function saveAccount(id: number) {
   try {
     const acc = accounts.value.find((a) => a.id === id)
     if (!acc) return
-    await updateEnhancedControl(id, {
+    const seconds = acc.config.stream_recovery.cooldown_seconds
+    if (!Number.isInteger(seconds) || seconds < 0 || seconds > 86400) {
+      appStore.showError(t('admin.accountsEnhanced.streamRecoveryInvalidCooldown'))
+      return
+    }
+    const saved = await updateEnhancedControl(id, {
       cache_rate: acc.config.cache_rate,
       ttft: acc.config.ttft,
       reasoning_effort: acc.config.reasoning_effort,
       account_stats: acc.config.account_stats,
+      stream_recovery: acc.config.stream_recovery,
     })
+    acc.config = normalizeConfig(saved)
     dirty[id] = false
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
   } finally {
     saving[id] = false
   }

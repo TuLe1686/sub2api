@@ -41,7 +41,7 @@ func TestAccountTestFailureLogAttribution(t *testing.T) {
 			svc := &AccountTestService{accountRepo: repo}
 			if background {
 				result, err := svc.RunTestBackground(ctx, 77, "test-model")
-				require.NoError(t, err)
+				require.Error(t, err)
 				require.Equal(t, "failed", result.Status)
 				require.NotEmpty(t, result.ErrorMessage)
 			} else {

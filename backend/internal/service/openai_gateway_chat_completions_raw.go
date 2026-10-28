@@ -257,11 +257,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 8. Forward response
 	var result *OpenAIForwardResult
 	var forwardErr error
+	var recoveryUsage *streamRecoveryUsageReader
 	if clientStream {
+		recoveryUsage = observeStreamRecoveryUsage(ctx, c, resp, "chat")
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
+	result = completeStreamRecoveryAttempt(ctx, c, account, resp, recoveryUsage, result)
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
 		result.UpstreamEndpoint = grokChatRawEndpoint
@@ -417,7 +420,12 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	// 上游在任何终止信号之前结束：连接被 reset（scanErr != nil）或干净 EOF。
 	// 两者都不能再记成功——此前统一返回 nil error，把上游截断伪装成
 	// `HTTP 200 + usage 0/0`，客户端收到半截回答且 Ops 侧完全无感。
-	if !clientAborted && terminal.IsTruncated(clientOutputStarted) {
+	truncated := terminal.IsTruncated(clientOutputStarted)
+	recoveryAttempt := streamRecoveryAttemptEnabled(c.Request.Context(), c)
+	if recoveryAttempt {
+		truncated = !terminal.sawDone && (scanErr != nil || (!terminal.sawFinishReason && (terminal.sawDataLine || !clientOutputStarted)))
+	}
+	if !clientAborted && truncated {
 		cause := scanErr
 		if cause == nil {
 			cause = ErrOpenAIUpstreamStreamTruncated
@@ -430,7 +438,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			zap.Bool("saw_sse_data", terminal.sawDataLine),
 			zap.Bool("client_output_started", clientOutputStarted),
 		)
-		if !clientOutputStarted {
+		if !clientOutputStarted && !recoveryAttempt {
 			// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
 			return nil, newOpenAIRawStreamTruncatedFailoverError(c, account, requestID, cause)
 		}

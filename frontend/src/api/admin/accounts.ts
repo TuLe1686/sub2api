@@ -329,12 +329,19 @@ export interface AccountStatsSetting {
   mode: AccountStatsMode
 }
 
+/** HTTP SSE 断流恢复配置，0 秒只排除本次请求中的故障账号 */
+export interface StreamRecoverySetting {
+  enabled: boolean
+  cooldown_seconds: number
+}
+
 /** 增强控制配置 */
 export interface EnhancedControl {
   cache_rate: CacheRateSetting
   ttft: TTFTSetting
   reasoning_effort: ReasoningEffortSetting
   account_stats: AccountStatsSetting
+  stream_recovery: StreamRecoverySetting
 }
 
 /**

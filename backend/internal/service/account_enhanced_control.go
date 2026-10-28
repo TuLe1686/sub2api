@@ -43,6 +43,8 @@
 package service
 
 import (
+	"encoding/json"
+	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -94,6 +96,56 @@ type EnhancedControl struct {
 	// ReasoningEffort 思考强度强制配置（本补丁第三块）。
 	ReasoningEffort ReasoningEffortSetting `json:"reasoning_effort,omitempty"`
 	AccountStats    AccountStatsSetting    `json:"account_stats"`
+	StreamRecovery  StreamRecoverySetting  `json:"stream_recovery"`
+}
+
+// StreamRecoverySetting 控制 HTTP SSE 断流恢复及故障账号暂停时长。
+// CooldownSeconds=0 仅在本次请求中排除账号，不跨请求暂停。
+type StreamRecoverySetting struct {
+	Enabled         bool `json:"enabled"`
+	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+func parseStreamRecoverySetting(raw any) StreamRecoverySetting {
+	setting := StreamRecoverySetting{CooldownSeconds: 600}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return setting
+	}
+	setting.Enabled, _ = m["enabled"].(bool)
+	var seconds float64
+	switch value := m["cooldown_seconds"].(type) {
+	case float64:
+		seconds = value
+	case int:
+		seconds = float64(value)
+	case int64:
+		seconds = float64(value)
+	case json.Number:
+		parsed, err := value.Float64()
+		if err != nil {
+			return setting
+		}
+		seconds = parsed
+	default:
+		return setting
+	}
+	if seconds >= 0 && seconds <= 86400 && math.Trunc(seconds) == seconds {
+		setting.CooldownSeconds = int(seconds)
+	}
+	return setting
+}
+
+// ResolveAccountStreamRecovery 返回运行时配置，仅 OpenAI API Key 账号可启用。
+func ResolveAccountStreamRecovery(account *Account) StreamRecoverySetting {
+	if account == nil {
+		return StreamRecoverySetting{CooldownSeconds: 600}
+	}
+	setting := ParseEnhancedControl(account.Extra).StreamRecovery
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
+		setting.Enabled = false
+	}
+	return setting
 }
 
 // CacheRateSetting 缓存率改写配置。
@@ -162,9 +214,12 @@ type CacheRateOverrideResult struct {
 }
 
 // ParseEnhancedControl 从 Account.extra 解析增强配置。
-// extra 为 nil 或无配置时前三项关闭、账号统计口径为 raw。
+// extra 为 nil 或无配置时前三项关闭、账号统计口径为 raw，断流恢复默认关闭且暂停时长 600 秒。
 func ParseEnhancedControl(extra map[string]any) EnhancedControl {
-	defaults := EnhancedControl{AccountStats: AccountStatsSetting{Mode: AccountStatsModeRaw}}
+	defaults := EnhancedControl{
+		AccountStats:   AccountStatsSetting{Mode: AccountStatsModeRaw},
+		StreamRecovery: StreamRecoverySetting{CooldownSeconds: 600},
+	}
 	if extra == nil {
 		return defaults
 	}
@@ -182,6 +237,7 @@ func ParseEnhancedControl(extra map[string]any) EnhancedControl {
 		TTFT:            parseTTFTSetting(m["ttft"]),
 		ReasoningEffort: parseReasoningEffortSetting(m["reasoning_effort"]),
 		AccountStats:    parseAccountStatsSetting(m["account_stats"]),
+		StreamRecovery:  parseStreamRecoverySetting(m["stream_recovery"]),
 	}
 }
 

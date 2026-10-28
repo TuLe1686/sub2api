@@ -1113,6 +1113,7 @@ type GatewayConfig struct {
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
+	StreamRecovery           GatewayStreamRecoveryConfig           `mapstructure:"stream_recovery"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
 
@@ -1260,6 +1261,12 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+}
+
+type GatewayStreamRecoveryConfig struct {
+	MaxRecoveries            int `mapstructure:"max_recoveries"`
+	WaitBudgetSeconds        int `mapstructure:"wait_budget_seconds"`
+	HeartbeatIntervalSeconds int `mapstructure:"heartbeat_interval_seconds"`
 }
 
 // GatewayOpenAIProxyStreamCircuitConfig controls the bounded, in-process
@@ -2606,6 +2613,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.ttl_seconds", 600)
+	viper.SetDefault("gateway.stream_recovery.max_recoveries", 3)
+	viper.SetDefault("gateway.stream_recovery.wait_budget_seconds", 180)
+	viper.SetDefault("gateway.stream_recovery.heartbeat_interval_seconds", 10)
 	// Grok free-tier local soft gate (scheduler-only; admin QueryQuota does not use this).
 	// Enabled by default because free detection requires an explicit free tier marker.
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_enabled", true)
@@ -3739,6 +3749,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIProxyStreamCircuit.TTLSeconds < 0 {
 		return fmt.Errorf("gateway.openai_proxy_stream_circuit.ttl_seconds must be non-negative")
+	}
+	if c.Gateway.StreamRecovery.MaxRecoveries < 0 || c.Gateway.StreamRecovery.MaxRecoveries > 10 {
+		return fmt.Errorf("gateway.stream_recovery.max_recoveries must be between 0 and 10")
+	}
+	if c.Gateway.StreamRecovery.WaitBudgetSeconds < 0 || c.Gateway.StreamRecovery.WaitBudgetSeconds > 3600 {
+		return fmt.Errorf("gateway.stream_recovery.wait_budget_seconds must be between 0 and 3600")
+	}
+	if c.Gateway.StreamRecovery.HeartbeatIntervalSeconds < 0 || c.Gateway.StreamRecovery.HeartbeatIntervalSeconds > 30 {
+		return fmt.Errorf("gateway.stream_recovery.heartbeat_interval_seconds must be between 0 and 30")
 	}
 	weights := c.Gateway.OpenAIWS.SchedulerScoreWeights
 	for _, weight := range []float64{
