@@ -1914,5 +1914,44 @@ export default {
       usageError: 'Fetch Error'
     },
 
+    // Accounts [Enhanced]
+    accountsEnhanced: {
+      title: 'Accounts [Enhanced]',
+      description: 'Configure cache rate override and TTFT control per enabled account',
+      activeCount: '{count} active account(s)',
+      noAccounts: 'No active accounts',
+      cacheRate: 'Cache Rate Setting',
+      ttftControl: 'TTFT Control',
+      reduceRange: 'Random reduce range',
+      fixedValueLabel: 'Fixed cache rate',
+      modes: {
+        off: 'Off',
+        randomReduce: 'Random Reduce',
+        fixedValue: 'Fixed Value',
+        ttftRandom: 'Random TTFT (500-3000ms)',
+        ttftProportional: 'Proportional TTFT (10% duration + random)',
+        effortOverride: 'Override',
+        effortFill: 'Fill if absent',
+        effortCap: 'Max thinking',
+        accountStatsRaw: 'Default (real tokens)',
+        accountStatsBilled: 'Sale price (rewritten tokens)'
+      },
+      accountStats: 'Account Stats Basis',
+      accountStatsRawHint: 'Account billed uses channel stats rules or the model pricing file; account quota uses real tokens × channel price',
+      accountStatsBilledHint: 'Account billed and account quota both use rewritten tokens × channel price × account rate, so they match; affects new requests only',
+      ttftRandomHint: '500ms ~ 3000ms random',
+      ttftProportionalHint: 'total duration × 10% + random 300-1000ms',
+      reasoningEffort: 'Reasoning Effort Enforcement',
+      effortOverrideHint: 'Override: the client value is always replaced by the configured one',
+      effortFillHint: 'Fill if absent: keep an explicit client value, inject only when it is missing',
+      effortCapHint: 'Max thinking: requests above the ceiling are forwarded at the ceiling; at-or-below values pass through. Usage logs still show the client value',
+      effortCapRuleSuffix: '(ceiling)',
+      effortModelPlaceholder: 'Model ID (supports * wildcard, e.g. grok-*)',
+      effortHint: 'Reasoning effort is injected after matching the model ID; exact matches win over wildcards, and the most specific wildcard wins',
+      addRule: 'Add rule',
+      removeRule: 'Remove',
+      noRules: 'No rules yet'
+    },
+
     // Scheduled Tests
 }

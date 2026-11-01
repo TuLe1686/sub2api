@@ -1885,5 +1885,44 @@ export default {
       }
     },
 
+    // 账号管理【增强】
+    accountsEnhanced: {
+      title: '账号管理【增强】',
+      description: '为每个启用账号独立设置缓存率改写和首字时长控制',
+      activeCount: '共 {count} 个启用账号',
+      noAccounts: '暂无启用账号',
+      cacheRate: '缓存率设置',
+      ttftControl: '首字时长控制',
+      reduceRange: '随机减少区间',
+      fixedValueLabel: '固定缓存率',
+      modes: {
+        off: '关闭',
+        randomReduce: '随机减少',
+        fixedValue: '固定值',
+        ttftRandom: '随机首字（500-3000ms）',
+        ttftProportional: '比例首字（总耗时10%+随机）',
+        effortOverride: '无条件覆盖',
+        effortFill: '补缺省',
+        effortCap: '最大思考',
+        accountStatsRaw: '默认（真实 token）',
+        accountStatsBilled: '按售价（改写后 token）'
+      },
+      accountStats: '账号统计口径',
+      accountStatsRawHint: '账号计费按渠道统计规则或模型定价文件计算，账号额度按真实 token × 渠道价扣减',
+      accountStatsBilledHint: '账号计费与账号额度都按改写后 token × 渠道价 × 账号倍率，两者一致；只影响之后的新请求',
+      ttftRandomHint: '500ms ~ 3000ms 随机值',
+      ttftProportionalHint: '总耗时 × 10% + 随机 300-1000ms',
+      reasoningEffort: '思考强度强制',
+      effortOverrideHint: '无条件覆盖：客户端传什么都会被改成下方配置值',
+      effortFillHint: '补缺省：客户端显式传了 effort 就尊重，只在没传时注入',
+      effortCapHint: '最大思考：客户端强度高于上限时实际按上限转发，不高于则原样；使用记录仍显示客户端原值',
+      effortCapRuleSuffix: '（上限）',
+      effortModelPlaceholder: '模型 ID（支持 * 通配，如 grok-*）',
+      effortHint: '按模型 ID 匹配后注入思考强度；精确匹配优先于通配，多个通配命中时取更具体的一条',
+      addRule: '添加规则',
+      removeRule: '删除',
+      noRules: '尚未添加规则'
+    },
+
     // Scheduled Tests
 }
