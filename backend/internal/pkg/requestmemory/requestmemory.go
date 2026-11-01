@@ -106,6 +106,7 @@ func (m *Manager) Acquire(ctx context.Context, bytes int64) (*Lease, error) {
 type Lease struct {
 	manager        *Manager
 	bytes, charged int64
+	working        int64
 	refs           int
 	releaseOnce    sync.Once
 }
@@ -185,10 +186,80 @@ func (l *Lease) release() {
 	defer m.mu.Unlock()
 	l.refs--
 	if l.refs == 0 {
-		m.used -= l.bytes
+		m.used -= l.bytes + l.working
 		close(m.changed)
 		m.changed = make(chan struct{})
 	}
+}
+
+// WorkingSet tracks live reusable output memory without accumulating every streamed byte.
+// It remains an actual owner of the parent request reservation until released.
+type WorkingSet struct {
+	lease    *Lease
+	bytes    int64
+	released bool
+}
+
+func (l *Lease) NewWorkingSet() (*WorkingSet, error) {
+	if l == nil {
+		return &WorkingSet{}, nil
+	}
+	m := l.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if l.refs <= 0 {
+		return nil, ErrCapacity
+	}
+	l.refs++
+	return &WorkingSet{lease: l}, nil
+}
+
+func (w *WorkingSet) Resize(bytes int64) error {
+	if w == nil || w.lease == nil {
+		return nil
+	}
+	l := w.lease
+	m := l.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w.released || bytes < 0 {
+		return ErrCapacity
+	}
+	delta := bytes - w.bytes
+	if delta > m.budget-m.used {
+		return ErrCapacity
+	}
+	m.used += delta
+	l.working += delta
+	w.bytes = bytes
+	if delta < 0 {
+		close(m.changed)
+		m.changed = make(chan struct{})
+	}
+	return nil
+}
+
+func (w *WorkingSet) Release() {
+	if w == nil || w.lease == nil {
+		return
+	}
+	l := w.lease
+	m := l.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w.released {
+		return
+	}
+	w.released = true
+	m.used -= w.bytes
+	l.working -= w.bytes
+	w.bytes = 0
+	l.refs--
+	if l.refs == 0 {
+		m.used -= l.bytes + l.working
+	}
+	close(m.changed)
+	m.changed = make(chan struct{})
 }
 
 type contextKey struct{}

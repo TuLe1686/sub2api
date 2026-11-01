@@ -26,6 +26,13 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
 
+func (c *gatewayCache) StreamRecoveryRedisClient() redis.UniversalClient {
+	if c == nil {
+		return nil
+	}
+	return c.rdb
+}
+
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
 // 格式: sticky_session:{groupID}:{sessionHash}
 func buildSessionKey(groupID int64, sessionHash string) string {

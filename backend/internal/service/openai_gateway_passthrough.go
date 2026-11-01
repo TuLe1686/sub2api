@@ -370,6 +370,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
+	var streamErr error
+	var recoveryUsage *streamRecoveryUsageReader
 	for {
 		actualModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 		if actualModel == "" {
@@ -455,6 +457,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 
 		if reqStream {
+			recoveryUsage = observeStreamRecoveryUsage(ctx, c, resp, "responses")
 			result, handleErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 			if handleErr != nil {
 				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
@@ -474,13 +477,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 					return nil, s.handleErrorResponsePassthrough(ctx, compactResp, c, account, body, compactBody)
 				}
 				_ = resp.Body.Close()
-				return nil, handleErr
+				if recoveryUsage == nil {
+					return nil, handleErr
+				}
+				streamErr = handleErr
 			}
-			usage = result.usage
-			firstTokenMs = result.firstTokenMs
-			responseID = strings.TrimSpace(result.responseID)
-			imageCount = result.imageCount
-			imageOutputSizes = result.imageOutputSizes
+			if result != nil {
+				usage = result.usage
+				firstTokenMs = result.firstTokenMs
+				responseID = strings.TrimSpace(result.responseID)
+				imageCount = result.imageCount
+				imageOutputSizes = result.imageOutputSizes
+			}
 		} else {
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
 			if handleErr != nil {
@@ -551,7 +559,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageOutputSizes = imageOutputSizes
 		forwardResult.BillingModel = imageBillingModel
 	}
-	return forwardResult, nil
+	return completeStreamRecoveryAttempt(ctx, c, account, resp, recoveryUsage, forwardResult), streamErr
 }
 
 func logOpenAIPassthroughInstructionsRejected(

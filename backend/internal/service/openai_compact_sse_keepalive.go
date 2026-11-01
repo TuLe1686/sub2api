@@ -192,6 +192,9 @@ func OpenAICompactKeepaliveAdjustedWrittenSize(c *gin.Context) int {
 		return size
 	}
 	keepaliveBytes := compactKeepaliveBytes + streamKeepaliveBytes
+	if counted, ok := c.Writer.(interface{ StreamKeepaliveBytes() int }); ok {
+		keepaliveBytes += counted.StreamKeepaliveBytes()
+	}
 	if keepaliveBytes <= 0 {
 		return size
 	}

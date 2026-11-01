@@ -111,6 +111,42 @@ func TestOversizeDoesNotWaitAndChargeOverflowDoesNotWrap(t *testing.T) {
 	}
 }
 
+func TestLeaseWorkingSetDoesNotChargeEveryOutputByteForever(t *testing.T) {
+	m, _ := requestmemory.New(100, 0, 0)
+	l, _ := m.Acquire(context.Background(), 30)
+	if err := l.Charge(20); err != nil {
+		t.Fatal(err)
+	}
+	working, err := l.NewWorkingSet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := working.Resize(50); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Snapshot().UsedBytes; got != 80 {
+		t.Fatalf("working reservation %d", got)
+	}
+	if err := working.Resize(71); !errors.Is(err, requestmemory.ErrCapacity) {
+		t.Fatalf("oversize: %v", err)
+	}
+	if err := working.Resize(5); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Snapshot().UsedBytes; got != 35 {
+		t.Fatalf("shrink did not return capacity: %d", got)
+	}
+	l.Release()
+	if got := m.Snapshot().UsedBytes; got != 35 {
+		t.Fatalf("working owner lost body reservation: %d", got)
+	}
+	working.Release()
+	working.Release()
+	if got := m.Snapshot().UsedBytes; got != 0 {
+		t.Fatalf("working owner leaked: %d", got)
+	}
+}
+
 // image-compress 补丁：解析计费权重按体积分段（>40MiB 用 2×，≤40MiB 维持 4×）。
 func TestParserWeightForBodySize(t *testing.T) {
 	if got := requestmemory.ParserWeightForBodySize(40 << 20); got != requestmemory.ParserWeight {

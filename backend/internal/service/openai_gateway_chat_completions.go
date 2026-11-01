@@ -423,8 +423,14 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// 9. Handle normal response
 	var result *OpenAIForwardResult
 	var handleErr error
+	var recoveryUsage *streamRecoveryUsageReader
 	if clientStream {
+		recoveryUsage = observeStreamRecoveryUsage(ctx, c, resp, "responses")
 		result, handleErr = s.handleChatStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime, len(body))
+		if result == nil && recoveryUsage != nil {
+			result = &OpenAIForwardResult{RequestID: resp.Header.Get("x-request-id"), UpstreamHeaders: resp.Header,
+				Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel, Stream: true, Duration: time.Since(startTime)}
+		}
 	} else {
 		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
@@ -443,7 +449,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// 计费 tier 优先采用上游回显值；上游未回显时回退到最终出站 body（经过
 	// fast policy filter/force 之后）里的 tier，policy filter 删掉字段后不再
 	// 按原请求 Fast 计费。
-	if handleErr == nil && result != nil {
+	if (handleErr == nil || recoveryUsage != nil) && result != nil {
 		if tier := resolvedOpenAIUpstreamServiceTier(c, extractOpenAIServiceTierFromBody(responsesBody)); tier != nil {
 			result.ServiceTier = tier
 		}
@@ -463,7 +469,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		notifyOpenAIAutoReset(*account.ParentAccountID)
 	}
 
-	return result, handleErr
+	return completeStreamRecoveryAttempt(ctx, c, account, resp, recoveryUsage, result), handleErr
 }
 
 var responsesInputStringValidationError = regexp.MustCompile(`^['"]loc['"]\s*:\s*\(\s*['"]body['"]\s*,\s*['"]input['"]\s*,\s*['"]str['"]\s*\)$`)
