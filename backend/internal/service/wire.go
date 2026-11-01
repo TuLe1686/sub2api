@@ -651,8 +651,9 @@ func ProvideGeminiCachedContentService(repo GeminiCachedContentRepository, compa
 func ProvideScheduledTestService(
 	planRepo ScheduledTestPlanRepository,
 	resultRepo ScheduledTestResultRepository,
+	cfg *config.Config,
 ) *ScheduledTestService {
-	return NewScheduledTestService(planRepo, resultRepo)
+	return NewScheduledTestService(planRepo, resultRepo, cfg)
 }
 
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.

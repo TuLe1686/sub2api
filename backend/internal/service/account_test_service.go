@@ -74,6 +74,18 @@ type TestEvent struct {
 type AccountTestOptions struct {
 	ImageDataURL string
 	AudioDataURL string
+	ObserveOnly  bool
+}
+
+type scheduledTestObserveOnlyContextKey struct{}
+
+func WithScheduledTestObserveOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, scheduledTestObserveOnlyContextKey{}, true)
+}
+
+func ScheduledTestObserveOnly(ctx context.Context) bool {
+	observeOnly, _ := ctx.Value(scheduledTestObserveOnlyContextKey{}).(bool)
+	return observeOnly
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -366,6 +378,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	initAccountTestLogger(c, accountID, modelID, mode)
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
+	if testOpts.ObserveOnly {
+		ctx = WithScheduledTestObserveOnly(ctx)
+		c.Request = c.Request.WithContext(ctx)
+	}
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -974,7 +990,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
-		if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+		if !ScheduledTestObserveOnly(ctx) && !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
 			expectedTaskID := credentialAccount.GetCredential("task_id")
 			if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
 				return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
@@ -3308,7 +3324,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
 	ginCtx.Set(accountTestBackgroundKey, true)
 
-	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
+	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault, AccountTestOptions{ObserveOnly: true})
 
 	finishedAt := time.Now()
 	body := w.Body.String()
@@ -3329,7 +3345,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
-	}, nil
+	}, testErr
 }
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.
