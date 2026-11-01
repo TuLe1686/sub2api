@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/http"
@@ -43,13 +44,11 @@ func requestMemoryGuardWithManager(cfg config.GatewayRequestMemoryGuardConfig, m
 			requestMemoryGuardError(c, 503, "Request memory guard is unavailable")
 			return
 		}
-		initial := int64(576)
-		if req.ContentLength > 0 {
-			if req.ContentLength > (math.MaxInt64-4096)/6 {
-				requestMemoryGuardError(c, 503, "Request memory budget exhausted")
-				return
-			}
-			initial = 6*req.ContentLength + 4096
+		initial, ok := requestMemoryGuardInitialBytes(req.ContentLength)
+		if !ok {
+			requestMemoryGuardError(c, http.StatusRequestEntityTooLarge,
+				fmt.Sprintf("Request body exceeds the %d MiB per-request limit", requestMemoryGuardHeavyBodyMaxBytes>>20))
+			return
 		}
 		lease, err := m.Acquire(req.Context(), initial)
 		if err != nil {
@@ -140,4 +139,51 @@ func requestMemoryGuardError(c *gin.Context, status int, message string) {
 	default:
 		c.AbortWithStatusJSON(status, gin.H{"error": gin.H{"type": errorType, "code": code, "message": message}})
 	}
+}
+
+// image-compress 补丁：>40MiB 的 body 走"读取 → 内联图片压缩 → 下游重写"管道
+// （见 service/openai_responses_image_compress.go 与 builder runs/20261013-image-compress），
+// 预扣从一刀切 6×CL 改为分段：小 body 保持 6×CL 不变；重 body 取 2×CL+312MiB
+// 与 5×CL 的较大者——后者是读取链路的累计计费（分块~2×CL+拼装 CL+解析 2×CL），
+// 预扣低于它会让准入通过的请求死在读取中（同一条 503）。
+//
+// 单请求准入硬上限 requestMemoryGuardHeavyBodyMaxBytes = 150MiB（rev 4：100→150）：
+//   - 150MiB 时读取计费 ~750MiB，仍在 896MiB 预算内（单发）；两个 116MiB 并发
+//     （2×580MiB）超预算，第二个等待 WAIT_TIMEOUT 后 503；
+//   - 超出硬上限的请求在读取前直接 413 request_body_too_large，不再复用
+//     "Request memory budget exhausted" 文案（rev 4：该文案只表示预算真被占满）。
+//
+// 系数由 hk 隔离演练标定。
+const (
+	requestMemoryGuardHeavyBodyThresholdBytes = 40 << 20
+	requestMemoryGuardHeavyBodyMultiplier     = 2
+	requestMemoryGuardHeavyBodyFixedBytes     = 312 << 20
+	// requestMemoryGuardHeavyBodyReadMultiplier：读取链路对 >40MiB body 的累计计费倍数。
+	requestMemoryGuardHeavyBodyReadMultiplier = 5
+	// requestMemoryGuardHeavyBodyMaxBytes：重体请求单请求硬上限（独立于预算）。
+	requestMemoryGuardHeavyBodyMaxBytes = 150 << 20
+)
+
+// requestMemoryGuardInitialBytes 计算单请求内存预扣；ok=false 表示超过单请求硬上限（413）。
+func requestMemoryGuardInitialBytes(contentLength int64) (int64, bool) {
+	if contentLength <= 0 {
+		return 576, true
+	}
+	if contentLength > requestMemoryGuardHeavyBodyThresholdBytes {
+		if contentLength > requestMemoryGuardHeavyBodyMaxBytes {
+			return 0, false
+		}
+		if contentLength > (math.MaxInt64-requestMemoryGuardHeavyBodyFixedBytes)/requestMemoryGuardHeavyBodyMultiplier {
+			return 0, false
+		}
+		initial := requestMemoryGuardHeavyBodyMultiplier*contentLength + requestMemoryGuardHeavyBodyFixedBytes
+		if readCost := requestMemoryGuardHeavyBodyReadMultiplier * contentLength; readCost > initial {
+			initial = readCost
+		}
+		return initial, true
+	}
+	if contentLength > (math.MaxInt64-4096)/6 {
+		return 0, false
+	}
+	return 6*contentLength + 4096, true
 }
