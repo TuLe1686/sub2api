@@ -789,6 +789,16 @@ func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	defer finishDelegatedCall(state)
 	return rw.Hijack()
 }
+func (w *opsCaptureWriter) SetReadDeadline(deadline time.Time) error {
+	state, rw := w.beginDelegatedCall()
+	if state == nil {
+		return http.ErrNotSupported
+	}
+	state.mu.Unlock()
+	defer finishDelegatedCall(state)
+	return http.NewResponseController(rw).SetReadDeadline(deadline)
+}
+
 func (w *opsCaptureWriter) CloseNotify() <-chan bool {
 	state, rw := w.lockActive()
 	if state == nil {
